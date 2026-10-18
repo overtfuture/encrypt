@@ -2,17 +2,20 @@
 
 @theme {
   --font-sans: 'DM Sans', sans-serif;
-  --font-display: 'Fraunces', Georgia, serif;
-  --color-paper: #f5f2eb;
-  --color-ink: #292d27;
-  --color-muted: #73776d;
-  --color-accent: #b8432c;
-  --color-line: #dcded3;
-  --color-sage: #e8ece2;
+  --font-display: 'DM Sans', sans-serif;
+  --color-paper: #ffffff;
+  --color-ink: #111111;
+  --color-muted: #707070;
+  --color-accent: #75618f;
+  --color-accent-strong: #604d79;
+  --color-accent-soft: #f1edf7;
+  --color-line: #e5e5e5;
+  --color-surface: #fafafa;
 }
 
 @layer base {
   :root {
+    color-scheme: light;
     font-family: var(--font-sans);
     color: var(--color-ink);
     background: var(--color-paper);
@@ -55,8 +58,8 @@
     outline: 2px solid var(--color-accent);
   }
   ::selection {
-    background: #d9dfca;
-    color: #292d27;
+    background: #ded3ed;
+    color: var(--color-ink);
   }
   h1,
   h2,
@@ -66,25 +69,26 @@
   h1,
   h2 {
     font-family: var(--font-display);
-    font-weight: 400;
+    font-weight: 500;
   }
   h1 {
-    font-size: clamp(3.2rem, 5.8vw, 5rem);
+    font-size: clamp(2.8rem, 5.4vw, 4.7rem);
     letter-spacing: -0.055em;
-    line-height: 1.03;
+    line-height: 1.08;
   }
   h1 em,
   h2 em {
     color: var(--color-accent);
-    font-weight: 400;
+    font-weight: inherit;
+    font-style: normal;
   }
   input:not([type='file']),
   textarea {
     width: 100%;
     min-width: 0;
-    border: 1px solid #d7dacd;
+    border: 1px solid var(--color-line);
     border-radius: 5px;
-    background: #fcfaf6;
+    background: var(--color-paper);
     padding: 12px 14px;
     color: var(--color-ink);
     font: inherit;
@@ -95,13 +99,13 @@
   }
   input:not([type='file']):focus,
   textarea:focus {
-    border-color: #919d84;
-    box-shadow: 0 0 0 3px #899a7420;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px #75618f18;
     outline: none;
   }
   textarea::placeholder,
   input::placeholder {
-    color: #92978a;
+    color: #858585;
   }
   input[type='datetime-local'] {
     min-height: 46px;
@@ -118,13 +122,14 @@
   .wordmark {
     @apply inline-flex items-start gap-1.5 text-ink no-underline;
     font-family: var(--font-display);
-    font-size: 35px;
-    letter-spacing: -1.8px;
+    font-size: 29px;
+    font-weight: 600;
+    letter-spacing: -1.5px;
   }
   .wordmark > span {
     @apply mt-0.5 text-accent;
     font-family: var(--font-sans);
-    font-size: 25px;
+    font-size: 21px;
   }
   .header-right {
     @apply flex items-center gap-8;
@@ -143,7 +148,7 @@
     @apply text-lg text-ink;
   }
   .about-panel {
-    @apply mt-5 grid gap-6 rounded-md border border-line bg-[#eeeee5] p-6 text-sm leading-6 md:grid-cols-2;
+    @apply mt-5 grid gap-6 rounded-md border border-line bg-surface p-6 text-sm leading-6 md:grid-cols-2;
   }
   .about-panel h2 {
     @apply mb-2 text-2xl;
@@ -152,10 +157,10 @@
     @apply mt-3;
   }
   .mode-nav {
-    @apply mt-8 inline-flex gap-1 rounded-full border border-line p-1;
+    @apply mt-8 inline-flex gap-1 rounded-md border border-line p-1;
   }
   .mode-nav button {
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-medium text-muted transition-colors hover:text-ink;
+    @apply inline-flex items-center justify-center gap-2 rounded-sm px-5 py-2.5 text-xs font-medium text-muted transition-colors hover:text-ink;
   }
   .mode-nav button.active {
     @apply bg-ink text-paper;
@@ -173,8 +178,7 @@
     @apply max-w-[360px] pb-1 text-sm leading-7 whitespace-pre-line text-muted;
   }
   .workspace {
-    @apply overflow-hidden rounded-lg border border-line;
-    background: #faf8f2;
+    @apply overflow-hidden rounded-md border border-line bg-paper;
   }
   .composer {
     @apply px-7 py-8 md:p-9;
@@ -183,17 +187,17 @@
     @apply flex items-center gap-2.5 text-[13px] font-semibold;
   }
   .step {
-    @apply flex h-6 w-6 items-center justify-center rounded-full border border-[#d9ddce] text-[9px] font-medium text-muted;
+    @apply flex h-6 w-6 items-center justify-center rounded-full border border-line text-[9px] font-medium text-muted;
   }
   .small-note {
     @apply text-[10px] text-muted;
   }
   .message-field {
-    @apply mt-4 rounded-md border border-[#d7dacd] bg-[#fcfaf6] transition-shadow;
+    @apply mt-4 rounded-md border border-line bg-paper transition-shadow;
   }
   .message-field:focus-within {
-    border-color: #919d84;
-    box-shadow: 0 0 0 3px #899a7420;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px #75618f18;
   }
   .message-field textarea {
     @apply min-h-[175px] resize-y border-0 bg-transparent p-4 text-[15px] leading-7;
@@ -209,7 +213,7 @@
     @apply border-b border-line py-5;
   }
   .option-icon {
-    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eceee4] text-[#727f62];
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line text-muted;
   }
   .option-title {
     @apply block text-[13px] font-medium;
@@ -218,13 +222,13 @@
     @apply mt-1 text-[11px] leading-4 text-muted;
   }
   .toggle {
-    @apply flex h-[24px] w-[42px] shrink-0 items-center rounded-full bg-[#d9ddcf] p-[3px] transition-colors;
+    @apply flex h-[24px] w-[42px] shrink-0 items-center rounded-full bg-[#dedede] p-[3px] transition-colors;
   }
   .toggle > span {
-    @apply h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform;
+    @apply h-[18px] w-[18px] rounded-full bg-white transition-transform;
   }
   .toggle[aria-checked='true'] {
-    @apply bg-[#75855c];
+    @apply bg-accent;
   }
   .toggle[aria-checked='true'] > span {
     transform: translateX(18px);
@@ -242,16 +246,16 @@
     @apply absolute inset-y-0 right-0 flex w-12 items-center justify-center text-muted;
   }
   .preset {
-    @apply rounded-full border border-line px-3 py-1.5 text-[10px] text-muted transition-colors hover:border-[#9daa8d] hover:bg-sage hover:text-ink;
+    @apply rounded-md border border-line px-3 py-1.5 text-[10px] text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent-strong;
   }
   .primary-button {
-    @apply inline-flex min-h-12 items-center justify-center gap-3 rounded-md bg-accent px-5 py-3.5 text-[13px] font-medium text-white transition-colors enabled:hover:bg-[#a03624] disabled:opacity-40;
+    @apply inline-flex min-h-12 items-center justify-center gap-3 rounded-md bg-accent px-5 py-3.5 text-[13px] font-medium text-white transition-colors enabled:hover:bg-accent-strong disabled:opacity-40;
   }
   .primary-button.w-full {
     @apply justify-between;
   }
   .secondary-button {
-    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-[#cdd3c2] px-4 py-3 text-xs font-medium text-ink transition-colors hover:bg-[#dce3d3];
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-md border border-line bg-paper px-4 py-3 text-xs font-medium text-ink transition-colors hover:border-ink hover:bg-surface;
   }
   .under-button {
     @apply mt-3.5 flex items-start justify-center gap-1.5 text-center text-[10px] leading-4 text-muted;
@@ -260,38 +264,38 @@
     @apply mt-px;
   }
   .error-message {
-    @apply rounded-md border border-[#e8c5b8] bg-[#f8eae2] px-3.5 py-3 text-xs leading-5 text-[#8e3425];
+    @apply rounded-md border border-accent bg-accent-soft px-3.5 py-3 text-xs leading-5 text-accent-strong;
   }
   .preview-panel {
-    @apply min-w-0 border-t border-line bg-sage lg:border-t-0 lg:border-l;
+    @apply min-w-0 border-t border-line bg-surface lg:border-t-0 lg:border-l;
     scroll-margin-top: 20px;
   }
   .preview-empty {
     @apply flex h-full min-h-[540px] flex-col px-7 pb-6 pt-7 md:px-9;
   }
   .preview-topline {
-    @apply flex items-center justify-between gap-3 text-[9px] font-medium tracking-[.13em] text-[#647157];
+    @apply flex items-center justify-between gap-3 text-[9px] font-medium tracking-[.13em] text-muted;
   }
   .preview-caption {
     @apply relative text-center;
   }
   .preview-caption .eyebrow {
-    @apply text-[8px] text-[#6e7d5b];
+    @apply text-[8px] text-accent;
   }
   .preview-caption h2 {
-    @apply mt-4 text-[38px] leading-[1.12] tracking-[-.04em];
+    @apply mt-4 text-[34px] leading-[1.2] tracking-[-.045em];
   }
   .preview-caption p {
-    @apply mt-4 text-[11px] leading-6 text-[#6d7864];
+    @apply mt-4 text-[11px] leading-6 text-muted;
   }
   .preview-bottomline {
-    @apply mt-auto flex items-center justify-between gap-2 border-t border-[#d3dac8] pt-4 text-[8px] tracking-[.1em] text-[#6f7e60];
+    @apply mt-auto flex items-center justify-between gap-2 border-t border-line pt-4 text-[8px] tracking-[.1em] text-muted;
   }
   .share-result {
     @apply p-7 md:p-9;
   }
   .status-dot {
-    @apply inline-block h-1.5 w-1.5 rounded-full bg-[#728358];
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-accent;
   }
   .share-heading {
     @apply mt-7 text-center;
@@ -300,23 +304,23 @@
     @apply text-4xl leading-[1.08] tracking-[-.04em];
   }
   .share-heading p {
-    @apply mt-3 text-xs text-[#69755f];
+    @apply mt-3 text-xs text-muted;
   }
   .qr-frame {
-    @apply mx-auto mt-6 max-w-[250px] rounded-lg border border-[#d7dccd] bg-white p-2 pb-4 text-center shadow-[0_5px_16px_#26311b05];
+    @apply mx-auto mt-6 max-w-[250px] rounded-md border border-line bg-white p-2 pb-4 text-center;
   }
   .qr-frame img {
     @apply mx-auto block h-auto w-full;
     image-rendering: pixelated;
   }
   .qr-frame span {
-    @apply text-[8px] tracking-[.13em] text-[#6a765f];
+    @apply text-[8px] tracking-[.13em] text-muted;
   }
   .share-tags {
     @apply my-5 flex flex-wrap justify-center gap-x-4 gap-y-2;
   }
   .share-tags > span {
-    @apply inline-flex items-center gap-1.5 text-[10px] text-[#647157];
+    @apply inline-flex items-center gap-1.5 text-[10px] text-muted;
   }
   .share-link-input {
     @apply truncate text-xs!;
@@ -325,7 +329,7 @@
     @apply mt-3 text-center text-[10px] leading-5 text-muted;
   }
   .qr-too-large {
-    @apply mx-auto my-7 flex max-w-[260px] flex-col items-center gap-4 rounded-md border border-dashed border-[#bbc6ab] p-7 text-center text-xs leading-5 text-[#647157];
+    @apply mx-auto my-7 flex max-w-[260px] flex-col items-center gap-4 rounded-md border border-dashed border-line p-7 text-center text-xs leading-5 text-muted;
   }
   .open-title {
     @apply max-w-[650px];
@@ -341,7 +345,7 @@
     @apply relative my-7 border-t border-line text-center;
   }
   .divider-label span {
-    @apply relative -top-2 bg-[#faf8f2] px-3 text-[10px] text-muted;
+    @apply relative -top-2 bg-paper px-3 text-[10px] text-muted;
   }
   .camera-view {
     @apply relative mt-5 overflow-hidden rounded-md bg-ink;
@@ -359,10 +363,10 @@
     @apply mx-auto max-w-[760px];
   }
   .beacon-status {
-    @apply mx-auto my-7 max-w-[420px] rounded-md border border-[#d5dccb] bg-sage p-5 text-center text-xs leading-6 text-[#647157];
+    @apply mx-auto my-7 max-w-[420px] rounded-md border border-line bg-surface p-5 text-center text-xs leading-6 text-muted;
   }
   .received-card {
-    @apply overflow-hidden rounded-lg border border-line bg-[#faf8f2] px-6 pb-6 pt-7 md:px-10 md:pt-8;
+    @apply overflow-hidden rounded-md border border-line bg-paper px-6 pb-6 pt-7 md:px-10 md:pt-8;
   }
   .countdown-header {
     @apply pt-12 text-center;
@@ -380,22 +384,22 @@
     @apply font-medium text-ink;
   }
   .countdown {
-    @apply mx-auto mt-9 grid max-w-[500px] grid-cols-4 rounded-md border border-[#d5dccb] bg-sage py-6;
+    @apply mx-auto mt-9 grid max-w-[500px] grid-cols-4 rounded-md border border-line bg-paper py-6;
   }
   .countdown > div {
-    @apply border-r border-[#d5dccb] text-center last:border-r-0;
+    @apply border-r border-line text-center last:border-r-0;
   }
   .countdown span {
-    @apply block font-display text-[42px] leading-none tracking-[-.04em] tabular-nums md:text-[54px];
+    @apply block font-display text-[42px] font-medium leading-none tracking-[-.04em] text-accent tabular-nums md:text-[54px];
   }
   .countdown small {
-    @apply mt-3 block text-[8px] tracking-[.14em] text-[#6a785e] uppercase;
+    @apply mt-3 block text-[8px] tracking-[.14em] text-muted uppercase;
   }
   .countdown-note {
     @apply mx-auto mb-14 mt-6 max-w-[360px] text-center text-[11px] leading-5 text-muted;
   }
   .ready-symbol {
-    @apply mx-auto mb-6 mt-12 flex h-24 w-24 items-center justify-center rounded-full bg-sage text-[#74855d];
+    @apply mx-auto mb-6 mt-12 flex h-20 w-20 items-center justify-center rounded-full bg-accent-soft text-accent;
   }
   .pin-form {
     @apply mx-auto mb-14 max-w-[300px] text-center;
@@ -416,14 +420,14 @@
     @apply mt-12 flex items-center justify-between text-accent;
   }
   .revealed-message {
-    @apply my-7 break-words font-display text-[25px] leading-[1.65] tracking-[-.025em] whitespace-pre-wrap md:text-[30px];
+    @apply my-7 break-words text-[21px] leading-[1.75] tracking-[-.02em] whitespace-pre-wrap md:text-[25px];
     overflow-wrap: anywhere;
   }
   .message-signoff {
     @apply flex flex-wrap items-center justify-between gap-4 border-t border-line pt-5 text-[10px] text-muted;
   }
   .text-button {
-    @apply flex items-center justify-center gap-2 text-xs text-[#637653] transition-colors hover:text-accent;
+    @apply flex items-center justify-center gap-2 text-xs text-accent transition-colors hover:text-accent-strong;
   }
   .site-footer {
     @apply mb-7 mt-10 flex flex-wrap items-center justify-between gap-x-5 gap-y-3 border-t border-line pt-6 text-[10px] text-muted;
@@ -440,136 +444,14 @@
 }
 
 .envelope-scene {
-  position: relative;
-  height: 264px;
+  height: 240px;
   flex-shrink: 0;
-  margin: 3px 0 7px;
+  margin: 3px 0 14px;
   display: grid;
   place-items: center;
 }
-.orbit {
-  position: absolute;
-  width: 255px;
-  height: 200px;
-  border: 1px solid #bfc9b4;
-  border-radius: 50%;
-  transform: rotate(-28deg);
-  opacity: 0.65;
-}
-.orbit-two {
-  width: 210px;
-  height: 245px;
-  transform: rotate(28deg);
-  border-style: dashed;
-  border-color: #c3cdb7;
-  opacity: 0.55;
-}
-.orbit-spark {
-  position: absolute;
-  color: #8c9a79;
-  font-size: 24px;
-}
-.spark-one {
-  left: calc(50% - 135px);
-  top: 43px;
-}
-.spark-two {
-  right: calc(50% - 137px);
-  bottom: 45px;
-  font-size: 18px;
-}
-.envelope {
-  width: 210px;
-  height: 136px;
-  position: relative;
-  transform: rotate(-8deg) translateY(18px);
-  filter: drop-shadow(0 12px 12px #34402312);
-}
-.envelope-back {
-  position: absolute;
-  inset: 0;
-  background: #c6cdb7;
-  border-radius: 3px;
-}
-.letter {
-  position: absolute;
-  width: 170px;
-  height: 150px;
-  background: #fbf9f0;
-  left: 20px;
-  top: -45px;
-  transform: rotate(4deg);
-  padding: 16px 18px;
-  z-index: 1;
-  box-shadow: 0 -1px 6px #23301a05;
-}
-.letter > span {
-  font-family: var(--font-display);
-  font-size: 12px;
-  color: #727d63;
-}
-.letter > strong {
-  display: block;
-  font-family: var(--font-display);
-  font-size: 25px;
-  font-weight: 400;
-  font-style: italic;
-  color: #526046;
-  line-height: 1.1;
-}
-.letter > div {
-  height: 1px;
-  margin-top: 11px;
-  background: #dde1d3;
-}
-.letter > div:last-child {
-  width: 65%;
-}
-.envelope-front {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  border-radius: 3px;
-  background: #cdd4bd;
-  clip-path: polygon(0 0, 50% 58%, 100% 0, 100% 100%, 0 100%);
-}
-.envelope-front:after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: #d4dac7;
-  clip-path: polygon(0 100%, 50% 44%, 100% 100%);
-  border-radius: 0 0 3px 3px;
-}
-.envelope-flap {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  background: #d4dac7;
-  clip-path: polygon(0 0, 50% 65%, 100% 0);
-}
-.wax-seal {
-  position: absolute;
-  z-index: 4;
-  left: 90px;
-  top: 61px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 3px double #c2664d;
-  border-radius: 48% 50% 46% 52%;
-  background: #b8432c;
-  color: #edbba6;
-  font: italic 24px var(--font-display);
-  box-shadow: 1px 3px 3px #5d34272b;
-}
-.wax-seal > span {
-  position: absolute;
-  top: 0;
-  right: 0;
-  font: 10px var(--font-sans);
+.envelope-icon {
+  color: var(--color-ink);
 }
 .animate-arrive,
 main {
@@ -602,7 +484,7 @@ main {
     min-height: 84px;
   }
   .wordmark {
-    font-size: 30px;
+    font-size: 26px;
   }
   .about-button {
     font-size: 10px;

@@ -40,9 +40,9 @@ export default function App() {
         <a
           class="wordmark"
           href={window.location.pathname}
-          aria-label="Afterword home"
+          aria-label="encrypt this home"
         >
-          afterword<span>✳</span>
+          encrypt this<span>✳</span>
         </a>
         <div class="header-right">
           <span class="header-note">FOR THE MOMENTS IN BETWEEN.</span>
@@ -62,9 +62,9 @@ export default function App() {
           <div>
             <h2>A little note, a little later.</h2>
             <p>
-              Afterword turns words into a shareable time capsule. Send a link
-              or QR, set a countdown if you like, and add a PIN when the message
-              is just for someone.
+              encrypt this turns words into a shareable time capsule. Send a
+              link or QR, set a countdown if you like, and add a PIN when the
+              message is just for someone.
             </p>
           </div>
           <div>

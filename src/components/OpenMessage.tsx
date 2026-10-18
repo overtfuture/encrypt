@@ -218,7 +218,7 @@ export default function OpenMessage(props: {
                 <span class="step">01</span> Find your message
               </label>
               <p class="mt-4 text-sm leading-6 text-muted">
-                Paste an Afterword share link or payload below.
+                Paste a share link or payload below.
                 <br />
                 The surprise stays right here in your browser.
               </p>
@@ -459,7 +459,7 @@ export default function OpenMessage(props: {
                       ? 'PIN PROTECTED'
                       : 'A LITTLE TRUST GOES A LONG WAY'}
                 </span>
-                <span>AFTERWORD ✳</span>
+                <span>ENCRYPT THIS ✳</span>
               </div>
             </div>
             <button

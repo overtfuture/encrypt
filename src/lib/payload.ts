@@ -210,7 +210,7 @@ export function parsePayload(input: string): Payload {
     };
   } catch {
     throw new Error(
-      'This is not a valid Afterword message. Paste the complete link or payload.',
+      'This is not a valid message. Paste the complete link or payload.',
     );
   }
 }

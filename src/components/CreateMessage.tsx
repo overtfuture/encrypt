@@ -68,7 +68,7 @@ export default function CreateMessage() {
           errorCorrectionLevel: 'M',
           margin: 4,
           width: 1000,
-          color: { dark: '#292d27', light: '#ffffff' },
+          color: { dark: '#000000', light: '#ffffff' },
         });
       } catch {
         /* Preserve the link when a QR cannot be generated. */
@@ -452,7 +452,7 @@ export default function CreateMessage() {
                     <a
                       class="secondary-button"
                       href={sealed().qr!}
-                      download="afterword-message.png"
+                      download="encrypt-this-message.png"
                     >
                       <Icon name="download" />
                       <span>Save QR code</span>
