@@ -420,8 +420,117 @@
     @apply mt-12 flex items-center justify-between text-accent;
   }
   .revealed-message {
-    @apply my-7 break-words text-[21px] leading-[1.75] tracking-[-.02em] whitespace-pre-wrap md:text-[25px];
+    @apply my-7 break-words text-base leading-[1.75];
     overflow-wrap: anywhere;
+  }
+  .revealed-message > :first-child {
+    margin-top: 0;
+  }
+  .revealed-message > :last-child {
+    margin-bottom: 0;
+  }
+  .revealed-message p,
+  .revealed-message ul,
+  .revealed-message ol,
+  .revealed-message pre,
+  .revealed-message blockquote,
+  .revealed-message table {
+    margin-block: 1em;
+  }
+  .revealed-message :is(h1, h2, h3, h4, h5, h6) {
+    margin: 1.4em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.025em;
+  }
+  .revealed-message h1 {
+    font-size: 1.8em;
+  }
+  .revealed-message h2 {
+    font-size: 1.5em;
+  }
+  .revealed-message h3 {
+    font-size: 1.25em;
+  }
+  .revealed-message h4,
+  .revealed-message h5,
+  .revealed-message h6 {
+    font-size: 1em;
+  }
+  .revealed-message strong {
+    font-weight: 600;
+  }
+  .revealed-message em {
+    font-style: italic;
+    color: inherit;
+  }
+  .revealed-message a {
+    color: var(--color-accent-strong);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .revealed-message a:hover {
+    color: var(--color-ink);
+  }
+  .revealed-message ul {
+    list-style: disc;
+    padding-left: 1.5em;
+  }
+  .revealed-message ol {
+    list-style: decimal;
+    padding-left: 1.5em;
+  }
+  .revealed-message li {
+    margin-block: 0.25em;
+  }
+  .revealed-message li > p {
+    margin-block: 0.25em;
+  }
+  .revealed-message blockquote {
+    border-left: 3px solid var(--color-line);
+    padding-left: 1em;
+    color: var(--color-muted);
+  }
+  .revealed-message code {
+    border-radius: 3px;
+    background: #f3f3f3;
+    padding: 0.15em 0.3em;
+    font-family: ui-monospace, monospace;
+    font-size: 0.85em;
+  }
+  .revealed-message pre {
+    overflow-x: auto;
+    border: 1px solid var(--color-line);
+    border-radius: 5px;
+    background: var(--color-surface);
+    padding: 1em;
+  }
+  .revealed-message pre code {
+    background: transparent;
+    padding: 0;
+  }
+  .revealed-message table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 0.9em;
+  }
+  .revealed-message th,
+  .revealed-message td {
+    border: 1px solid var(--color-line);
+    padding: 0.5em 0.75em;
+    text-align: left;
+  }
+  .revealed-message th {
+    background: var(--color-surface);
+    font-weight: 600;
+  }
+  .revealed-message hr {
+    margin-block: 1.5em;
+    border-top: 1px solid var(--color-line);
+  }
+  .redirect-status {
+    @apply my-8 text-sm leading-6 text-muted;
   }
   .message-signoff {
     @apply flex flex-wrap items-center justify-between gap-4 border-t border-line pt-5 text-[10px] text-muted;

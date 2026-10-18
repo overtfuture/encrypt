@@ -87,7 +87,7 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
   return (
     <div class="scanner-input">
       <div class="divider-label">
-        <span>or bring your QR</span>
+        <span>or scan a QR code</span>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <button

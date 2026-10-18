@@ -4,7 +4,12 @@ const baseURL = `http://localhost:4173${process.env.PAGES_BASE_PATH || '/'}`;
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['pages.spec.ts', 'timelock.spec.ts', 'timelock.live.spec.ts'],
+  testMatch: [
+    'message-content.spec.ts',
+    'pages.spec.ts',
+    'timelock.spec.ts',
+    'timelock.live.spec.ts',
+  ],
   outputDir: './test-results-production',
   fullyParallel: true,
   use: {

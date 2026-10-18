@@ -112,18 +112,16 @@ export default function CreateMessage() {
       <section class="intro flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div>
           <p class="eyebrow mb-4">
-            <span class="tiny-line" /> A MESSAGE. A MOMENT. A LITTLE MAGIC.
+            <span class="tiny-line" /> TEXT ENCRYPTION
           </p>
           <h1>
-            Good things
+            Encrypt
             <br />
-            come <em>later.</em>
+            <em>a message.</em>
           </h1>
         </div>
         <p class="intro-description">
-          A birthday wish. A secret plan. A note to your future self.
-          <br class="hidden lg:block" /> Seal a little something. Let the moment
-          open it.
+          Share text as a link or QR code. Add an unlock time or PIN.
         </p>
       </section>
 
@@ -134,13 +132,13 @@ export default function CreateMessage() {
               <label class="section-label" for="message">
                 <span class="step">01</span> Your message
               </label>
-              <span class="small-note">Just between you & later.</span>
+              <span class="small-note">Up to 16 KB</span>
             </div>
             <div class="message-field">
               <textarea
                 id="message"
                 aria-label="Your message"
-                placeholder={'Dear later,\nI have a little something for you…'}
+                placeholder="Paste or type your message…"
                 value={text()}
                 onInput={(e) => {
                   setText(e.currentTarget.value);
@@ -150,7 +148,7 @@ export default function CreateMessage() {
                 spellcheck="true"
               />
               <div class="flex justify-between gap-3 px-4 pb-3 text-xs text-muted">
-                <span>Make it a moment worth waiting for.</span>
+                <span>Markdown supported</span>
                 <span
                   classList={{ 'text-accent': bytes() > MAX_MESSAGE_BYTES }}
                 >
@@ -158,9 +156,12 @@ export default function CreateMessage() {
                 </span>
               </div>
             </div>
+            <p class="field-help">
+              URL-only messages redirect after unlocking.
+            </p>
             <div class="settings-heading">
               <span class="section-label">
-                <span class="step">02</span> Make it yours
+                <span class="step">02</span> Options
               </span>
               <span class="small-note">Both optional</span>
             </div>
@@ -174,7 +175,7 @@ export default function CreateMessage() {
                     Set an opening time
                   </span>
                   <p class="option-description">
-                    Give them something to count down to.
+                    Lock until a specific date and time.
                   </p>
                 </div>
                 <button
@@ -227,15 +228,14 @@ export default function CreateMessage() {
                     ))}
                   </div>
                   <p class="field-help">
-                    Your local time:{' '}
+                    Local time:{' '}
                     {Intl.DateTimeFormat()
                       .resolvedOptions()
                       .timeZone.replaceAll('_', ' ')}
                     .
                   </p>
                   <p class="field-help">
-                    Secured with drand. Opening needs an internet connection and
-                    may take a few extra seconds.
+                    Unlocking uses drand and requires internet access.
                   </p>
                 </div>
               </Show>
@@ -250,7 +250,7 @@ export default function CreateMessage() {
                     Require a PIN
                   </span>
                   <p class="option-description">
-                    For a secret that’s just a little more secret.
+                    Require a code to decrypt the message.
                   </p>
                 </div>
                 <button
@@ -302,8 +302,7 @@ export default function CreateMessage() {
                     </button>
                   </div>
                   <p class="field-help">
-                    Longer PINs are stronger. Share yours separately; it isn’t
-                    in the link.
+                    Longer PINs are stronger. Share the PIN separately.
                   </p>
                 </div>
               </Show>
@@ -318,7 +317,7 @@ export default function CreateMessage() {
               type="submit"
               disabled={busy() || !text().trim() || bytes() > MAX_MESSAGE_BYTES}
             >
-              <span>{busy() ? 'Sealing your message…' : 'Seal & share'}</span>
+              <span>{busy() ? 'Encrypting…' : 'Encrypt & share'}</span>
               <Icon name={busy() ? 'clock' : 'arrow'} />
             </button>
             <Show when={bytes() > MAX_MESSAGE_BYTES}>
@@ -327,8 +326,8 @@ export default function CreateMessage() {
               </p>
             </Show>
             <p class="under-button">
-              <Icon name="lock" class="h-3.5 w-3.5 shrink-0" /> Made in your
-              browser. Stored in your link. Never on a server.
+              <Icon name="lock" class="h-3.5 w-3.5 shrink-0" /> Encrypted in
+              your browser. Stored in the link.
             </p>
           </fieldset>
         </form>
@@ -339,29 +338,18 @@ export default function CreateMessage() {
             fallback={
               <div class="preview-empty">
                 <div class="preview-topline">
-                  <span>YOUR LITTLE TIME CAPSULE</span>
-                  <span>№ 001</span>
+                  <span>SHARE PREVIEW</span>
+                  <Icon name="link" class="h-4 w-4" />
                 </div>
                 <Envelope />
                 <div class="preview-caption">
-                  <span class="eyebrow">
-                    A SMALL GESTURE. A PERFECT MOMENT.
-                  </span>
-                  <h2>
-                    Some words
-                    <br />
-                    are worth the wait.
-                  </h2>
-                  <p>
-                    Your share link and QR code will appear here.
-                    <br />
-                    Send a link, leave a card, make someone’s day.
-                  </p>
+                  <h2>Share your message</h2>
+                  <p>Encrypt a message to generate a link and QR code.</p>
                 </div>
                 <div class="preview-bottomline">
-                  <span>SEALED WITH INTENTION</span>
-                  <Icon name="spark" class="h-4 w-4" />
-                  <span>OPENED WITH A SMILE</span>
+                  <span>ENCRYPTED LOCALLY</span>
+                  <Icon name="lock" class="h-4 w-4" />
+                  <span>NO MESSAGE UPLOADS</span>
                 </div>
               </div>
             }
@@ -370,27 +358,20 @@ export default function CreateMessage() {
               <div class="share-result animate-arrive">
                 <div class="preview-topline">
                   <span class="flex items-center gap-2">
-                    <span class="status-dot" /> READY TO PASS ALONG
+                    <span class="status-dot" /> ENCRYPTED
                   </span>
                   <Icon name="check" class="h-4 w-4" />
                 </div>
                 <div class="share-heading">
-                  <h2>
-                    A little magic,
-                    <br />
-                    <em>ready to share.</em>
-                  </h2>
-                  <p>Send the link. Or let the QR do the talking.</p>
+                  <h2>Message encrypted</h2>
+                  <p>Share using the link below.</p>
                 </div>
                 <Show
                   when={sealed().qr}
                   fallback={
                     <div class="qr-too-large">
                       <Icon name="link" class="h-9 w-9" />
-                      <p>
-                        This message fits a link, but is too large for one QR
-                        code.
-                      </p>
+                      <p>Too large for a QR code. Share the link instead.</p>
                     </div>
                   }
                 >
@@ -401,7 +382,7 @@ export default function CreateMessage() {
                       width="240"
                       height="240"
                     />
-                    <span>SCAN ME. SAVE THE MOMENT.</span>
+                    <span>SCAN TO OPEN</span>
                   </div>
                 </Show>
                 <div class="share-tags">
@@ -415,7 +396,7 @@ export default function CreateMessage() {
                           minute: '2-digit',
                           year: 'numeric',
                         })
-                      : 'Ready to open now'}
+                      : 'No time restriction'}
                   </span>
                   <Show when={sealed().protected}>
                     <span>
@@ -466,7 +447,7 @@ export default function CreateMessage() {
                 </Show>
                 <p class="share-footnote">
                   {sealed().protected
-                    ? 'Remember to send the PIN separately.'
+                    ? 'Share the PIN separately.'
                     : sealed().opens
                       ? 'Anyone with the link or QR can open it after the unlock time.'
                       : 'Anyone with the link or QR can open this message.'}

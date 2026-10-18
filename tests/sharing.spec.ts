@@ -8,7 +8,7 @@ test('creates a link that reveals a Unicode message without a PIN', async ({
   await page
     .getByLabel('Your message')
     .fill('A tiny surprise 🌿\nSee you soon.');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   expect(link).toContain('/#');
   await expect(
@@ -19,7 +19,7 @@ test('creates a link that reveals a Unicode message without a PIN', async ({
     'A tiny surprise 🌿\nSee you soon.',
   );
   await expect(
-    page.getByRole('heading', { name: 'This moment is yours.' }),
+    page.getByRole('heading', { name: 'Message decrypted' }),
   ).toBeVisible();
   expect(await page.evaluate(() => localStorage.length)).toBe(0);
 });
@@ -29,13 +29,13 @@ test('requires a PIN and recovers from a wrong attempt', async ({ page }) => {
   await page.getByLabel('Your message').fill('Just for you.');
   await page.getByRole('switch', { name: 'Require a PIN' }).click();
   await page.getByLabel('Choose a PIN').fill('024680');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   await page.goto(await page.getByLabel('Share link').inputValue());
   await page.getByLabel('Enter PIN').fill('111111');
-  await page.getByRole('button', { name: 'Reveal message' }).click();
+  await page.getByRole('button', { name: 'Decrypt message' }).click();
   await expect(page.getByRole('alert')).toContainText('PIN');
   await page.getByLabel('Enter PIN').fill('024680');
-  await page.getByRole('button', { name: 'Reveal message' }).click();
+  await page.getByRole('button', { name: 'Decrypt message' }).click();
   await expect(page.getByTestId('revealed-message')).toHaveText(
     'Just for you.',
   );
@@ -50,10 +50,10 @@ test('counts down and automatically reveals when the clock reaches the date', as
   await page.getByLabel('Your message').fill('The wait is over.');
   await page.getByRole('switch', { name: 'Set an opening time' }).click();
   await page.getByLabel('Opening date and time').fill('2023-08-23T15:59');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   await page.goto(await page.getByLabel('Share link').inputValue());
   await expect(
-    page.getByRole('heading', { name: 'A little patience.' }),
+    page.getByRole('heading', { name: 'Message locked' }),
   ).toBeVisible();
   await expect(page.getByTestId('revealed-message')).toHaveCount(0);
   await page.clock.fastForward(61_000);
@@ -65,7 +65,7 @@ test('counts down and automatically reveals when the clock reaches the date', as
 test('can download a QR and open it from an image upload', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Your message').fill('A message in a picture.');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Save QR code' }).click();
   const file = await download;
@@ -85,12 +85,10 @@ test('keeps links available when a message exceeds QR capacity', async ({
   await page
     .getByLabel('Your message')
     .fill('Long notes are links too. '.repeat(250));
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   await expect(
-    page.getByText(
-      'This message fits a link, but is too large for one QR code.',
-    ),
+    page.getByText('Too large for a QR code. Share the link instead.'),
   ).toBeVisible();
   await page.goto(link);
   await expect(page.getByTestId('revealed-message')).toContainText(
@@ -123,7 +121,7 @@ test('opens a pasted link and keeps the PIN prompt behind the countdown', async 
   await page.getByLabel('Opening date and time').fill('2023-08-23T15:59');
   await page.getByRole('switch', { name: 'Require a PIN' }).click();
   await page.getByLabel('Choose a PIN').fill('123456');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   await page
     .getByRole('button', { name: 'Open a message', exact: true })
@@ -136,7 +134,7 @@ test('opens a pasted link and keeps the PIN prompt behind the countdown', async 
   await expect(page.getByLabel('Enter PIN')).toBeVisible();
   await expect(page.getByTestId('revealed-message')).toHaveCount(0);
   await page.getByLabel('Enter PIN').fill('123456');
-  await page.getByRole('button', { name: 'Reveal message' }).click();
+  await page.getByRole('button', { name: 'Decrypt message' }).click();
   await expect(page.getByTestId('revealed-message')).toHaveText(
     'A surprise with two conditions.',
   );
@@ -157,7 +155,7 @@ test('accepts text as text and never makes a third-party request', async ({
   await page
     .getByLabel('Your message')
     .fill('<img src="https://example.com/pixel" onerror="alert(1)">');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   await page.goto(await page.getByLabel('Share link').inputValue());
   await expect(page.getByTestId('revealed-message')).toHaveText(
     '<img src="https://example.com/pixel" onerror="alert(1)">',
@@ -198,7 +196,7 @@ test('can reopen the same link after resetting and clears the reader when its fr
 }) => {
   await page.goto('/');
   await page.getByLabel('Your message').fill('Open me again.');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   await page.goto(link);
   await expect(page.getByTestId('revealed-message')).toHaveText(
@@ -238,7 +236,7 @@ test('ignores a camera decode that finishes after the scanner is stopped', async
   );
   await page.goto('/');
   await page.getByLabel('Your message').fill('A stale camera message.');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   await page
     .getByRole('button', { name: 'Open a message', exact: true })

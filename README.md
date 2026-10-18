@@ -1,6 +1,6 @@
-# Afterword
+# encrypt this
 
-A small, client-side message-sharing site built with SolidJS, TypeScript, Tailwind CSS and Vite. Seal a text message, optionally set a secure opening time and PIN, then share a link or a downloadable QR code. Timed messages use drand's tlock library; message encryption and decryption stay in the browser.
+A client-side text-sharing site built with SolidJS, TypeScript, Tailwind CSS and Vite. Encrypt a message with an optional unlock time and PIN, then share a link or QR code. Timed messages use drand's tlock library; encryption and decryption stay in the browser.
 
 ```sh
 npm install
@@ -55,6 +55,10 @@ PAGES_BASE_PATH=/encrypt/ npm run test:production
 ## Opening messages
 
 Follow a share link, paste a link or raw payload into **Open a message**, upload a QR image, or use a camera. No-PIN messages reveal automatically when their opening time arrives. PIN-protected messages require the sender's PIN after that time. QR decoding runs locally using a bundled worker.
+
+Decrypted text renders as Markdown, including headings, lists, tables, code, and clickable links. Raw HTML is escaped; executable URL schemes are rejected. Images appear as links so opening a message does not request remote image content. Links open in a new tab without a referrer. **Copy text** copies the original message, including Markdown syntax.
+
+If the complete decrypted message is an absolute HTTP or HTTPS URL, the page redirects to it automatically after the unlock time and correct PIN, if required. Leading and trailing whitespace are ignored. Other URL schemes, embedded credentials, and URLs with surrounding text do not trigger redirects. Automatic redirects also omit the referrer. Existing links retain their original message content and gain the same rendering behavior when opened in this version.
 
 Payloads are base64url-encoded JSON envelopes. Version 1 is retained for old links and new undated messages. Version 2 is used for new timed messages and includes the public UTC opening timestamp, Quicknet round, encrypted message and its IV, tlock-encrypted key package, and optional PIN salt/wrapping IV. Version, timestamp, PIN mode and round are authenticated by AES-GCM. Version-2 parsing rejects timestamps inconsistent with the round, unexpected chains/recipients, and unprotected-key replacements. Both versions reject unsupported versions, malformed encodings, invalid dates, incorrect key sizes and oversized inputs.
 

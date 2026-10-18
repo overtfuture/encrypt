@@ -45,7 +45,7 @@ export default function App() {
           encrypt this<span>✳</span>
         </a>
         <div class="header-right">
-          <span class="header-note">FOR THE MOMENTS IN BETWEEN.</span>
+          <span class="header-note">CLIENT-SIDE ENCRYPTION</span>
           <button
             class="about-button"
             type="button"
@@ -53,30 +53,28 @@ export default function App() {
             aria-controls="about-panel"
             onClick={() => setAbout(!about())}
           >
-            A little about this <span>{about() ? '−' : '+'}</span>
+            How it works <span>{about() ? '−' : '+'}</span>
           </button>
         </div>
       </header>
       <Show when={about()}>
         <aside class="about-panel animate-arrive" id="about-panel">
           <div>
-            <h2>A little note, a little later.</h2>
+            <h2>Encrypted text sharing</h2>
             <p>
-              encrypt this turns words into a shareable time capsule. Send a
-              link or QR, set a countdown if you like, and add a PIN when the
-              message is just for someone.
+              Encrypt text in your browser and share it as a link or QR code. An
+              unlock time and PIN are optional.
             </p>
           </div>
           <div>
             <p>
-              Messages live in the link, with no accounts or uploads. Anyone
-              with an unprotected link can read its message once it opens. PINs
-              help with privacy, but short codes can be guessed.
+              The link contains the encrypted message. Without a PIN, anyone
+              with the link can read it once unlocked. Short PINs can be
+              guessed.
             </p>
             <p>
-              New dated messages use drand’s public unlock beacon to enforce
-              their opening time. The countdown runs locally; opening needs an
-              internet connection. Your message and PIN stay in your browser.
+              Timed messages use drand and need internet access to unlock. Your
+              text and PIN stay in your browser.
             </p>
           </div>
         </aside>
@@ -112,12 +110,11 @@ export default function App() {
       <footer class="site-footer">
         <div class="flex items-center gap-2">
           <span class="footer-flower">✳</span>
-          <span>A little something. A little later.</span>
+          <span>No accounts or message uploads.</span>
         </div>
         <span class="footer-fineprint">
-          A little countdown. A real time lock. Encrypted in your browser.
+          Encrypted locally. Shared by link or QR.
         </span>
-        <span class="footer-signature">MADE FOR THE MOMENT.</span>
       </footer>
     </div>
   );

@@ -18,6 +18,7 @@ import { Envelope } from './Envelope';
 import { Icon } from './Icon';
 import ScanInput from './ScanInput';
 import { TimelockUnavailableError } from '../lib/timelock';
+import { redirectUrl, renderMessage } from '../lib/message-content';
 
 export default function OpenMessage(props: {
   incoming: string;
@@ -42,6 +43,25 @@ export default function OpenMessage(props: {
     () => payload()?.u == null || now() >= payload()!.u!,
   );
   const remaining = createMemo(() => countdown(payload()?.u ?? now(), now()));
+  const destination = createMemo(() => {
+    const text = revealed();
+    return text === null ? null : redirectUrl(text);
+  });
+  const renderedMessage = createMemo(() => {
+    const text = revealed();
+    return text === null ? '' : renderMessage(text);
+  });
+
+  createEffect(() => {
+    const url = destination();
+    if (url) {
+      try {
+        window.location.replace(url);
+      } catch {
+        // A browser can block navigation; keep the explicit link available.
+      }
+    }
+  });
 
   function cancelPending() {
     generation++;
@@ -177,30 +197,34 @@ export default function OpenMessage(props: {
 
   const title = () =>
     revealed() !== null
-      ? 'This moment is yours.'
+      ? destination()
+        ? 'Redirecting…'
+        : 'Message decrypted'
       : payload()
         ? ready()
           ? waitingBeacon()
-            ? 'A little patience.'
-            : 'Just for you.'
-          : 'A little patience.'
-        : 'Something’s waiting.';
+            ? 'Waiting to unlock'
+            : 'Unlock message'
+          : 'Message locked'
+        : 'Open a message';
 
   return (
     <>
       <section class="intro flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div>
           <p class="eyebrow mb-4">
-            <span class="tiny-line" /> SOMEONE LEFT YOU SOMETHING.
+            <span class="tiny-line" /> TEXT DECRYPTION
           </p>
           <h1 class="open-title">{title()}</h1>
         </div>
         <p class="intro-description">
           {revealed() !== null
-            ? 'A little message. Right on time.'
+            ? destination()
+              ? 'Opening the URL from this message.'
+              : 'Your decrypted message is shown below.'
             : payload()
-              ? 'Some things are better when you wait.'
-              : 'Have a link or a mysterious little square?\nYou’re in the right place.'}
+              ? 'Available after the unlock time, with a PIN if required.'
+              : 'Paste a link or payload, upload a QR image, or scan with your camera.'}
         </p>
       </section>
       <Show
@@ -215,12 +239,10 @@ export default function OpenMessage(props: {
               }}
             >
               <label for="payload-input" class="section-label">
-                <span class="step">01</span> Find your message
+                <span class="step">01</span> Message source
               </label>
               <p class="mt-4 text-sm leading-6 text-muted">
-                Paste a share link or payload below.
-                <br />
-                The surprise stays right here in your browser.
+                Decryption happens in your browser.
               </p>
               <label for="payload-input" class="field-label mt-7">
                 Link or payload
@@ -252,26 +274,18 @@ export default function OpenMessage(props: {
             <div class="preview-panel">
               <div class="preview-empty">
                 <div class="preview-topline">
-                  <span>SOMETHING WORTH OPENING</span>
-                  <span>↗</span>
+                  <span>QR INPUT</span>
+                  <Icon name="scan" class="h-4 w-4" />
                 </div>
                 <Envelope />
                 <div class="preview-caption">
-                  <span class="eyebrow">A NOTE THAT FOUND ITS WAY TO YOU.</span>
-                  <h2>
-                    A small surprise.
-                    <br />A lovely little pause.
-                  </h2>
-                  <p>
-                    Scan, paste, or upload.
-                    <br />
-                    We’ll take care of the reveal.
-                  </p>
+                  <h2>Open from a QR code</h2>
+                  <p>Upload an image or use your camera.</p>
                 </div>
                 <div class="preview-bottomline">
-                  <span>FROM SOMEONE</span>
-                  <Icon name="spark" class="h-4 w-4" />
-                  <span>TO YOU</span>
+                  <span>DECRYPTED LOCALLY</span>
+                  <Icon name="lock" class="h-4 w-4" />
+                  <span>NO MESSAGE UPLOADS</span>
                 </div>
               </div>
             </div>
@@ -284,9 +298,7 @@ export default function OpenMessage(props: {
               <div class="preview-topline">
                 <span class="flex items-center gap-2">
                   <span class="status-dot" />{' '}
-                  {revealed() !== null
-                    ? 'DELIVERED TO THIS MOMENT'
-                    : 'A LITTLE SOMETHING FOR YOU'}
+                  {revealed() !== null ? 'DECRYPTED' : 'ENCRYPTED MESSAGE'}
                 </span>
                 <Icon
                   name={revealed() !== null ? 'mail' : 'clock'}
@@ -314,12 +326,10 @@ export default function OpenMessage(props: {
                       }
                     >
                       <div class="countdown-header">
-                        <span class="eyebrow">
-                          GOOD THINGS TAKE A LITTLE TIME
-                        </span>
-                        <h2>Not quite yet.</h2>
+                        <span class="eyebrow">SCHEDULED UNLOCK</span>
+                        <h2>Time remaining</h2>
                         <p>
-                          Your message opens on
+                          Unlocks on
                           <br />
                           <strong>
                             {new Date(current().u!).toLocaleString([], {
@@ -348,11 +358,8 @@ export default function OpenMessage(props: {
                         </For>
                       </div>
                       <p class="countdown-note">
-                        Leave this page open. We’ll reveal it when it’s time.
-                        <Show when={current().p}>
-                          {' '}
-                          You’ll also need the PIN.
-                        </Show>
+                        Keep this page open or return after the unlock time.
+                        <Show when={current().p}> A PIN is also required.</Show>
                       </p>
                     </Show>
                     <Show when={ready()}>
@@ -363,20 +370,16 @@ export default function OpenMessage(props: {
                             {busy()
                               ? current().v === 2
                                 ? 'Requesting the unlock beacon…'
-                                : 'Opening your message…'
+                                : 'Decrypting message…'
                               : waitingBeacon()
-                                ? 'Your message is still sealed.'
+                                ? 'Your message is still locked.'
                                 : 'Your message is ready.'}
                           </p>
                         }
                       >
                         <form class="pin-form" onSubmit={reveal}>
-                          <h2>One little secret.</h2>
-                          <p>
-                            This message needs a PIN.
-                            <br />
-                            Ask the sender if you don’t have it.
-                          </p>
+                          <h2>PIN required</h2>
+                          <p>Enter the sender’s PIN to decrypt this message.</p>
                           <label for="enter-pin" class="field-label text-left">
                             Enter PIN
                           </label>
@@ -389,7 +392,7 @@ export default function OpenMessage(props: {
                             minlength="4"
                             maxlength="12"
                             required
-                            placeholder="Your secret code"
+                            placeholder="4–12 digits"
                             value={pin()}
                             disabled={busy()}
                             onInput={(e) => setPin(e.currentTarget.value)}
@@ -400,7 +403,7 @@ export default function OpenMessage(props: {
                             type="submit"
                           >
                             <span>
-                              {busy() ? 'Opening…' : 'Reveal message'}
+                              {busy() ? 'Decrypting…' : 'Decrypt message'}
                             </span>
                             <Icon name="arrow" />
                           </button>
@@ -426,14 +429,34 @@ export default function OpenMessage(props: {
                 }
               >
                 <div class="revealed-heading">
-                  <span class="eyebrow">THE WAIT IS OVER.</span>
-                  <Icon name="spark" class="h-6 w-6" />
+                  <span class="eyebrow">MESSAGE</span>
+                  <Icon name="check" class="h-6 w-6" />
                 </div>
-                <div class="revealed-message" data-testid="revealed-message">
-                  {revealed()}
-                </div>
+                <Show
+                  when={destination()}
+                  fallback={
+                    <div
+                      class="revealed-message"
+                      data-testid="revealed-message"
+                      innerHTML={renderedMessage()}
+                    />
+                  }
+                >
+                  {(url) => (
+                    <div class="redirect-status" role="status">
+                      <p>Redirecting to the message URL.</p>
+                      <a
+                        href={url()}
+                        rel="noopener noreferrer"
+                        class="text-button mt-3"
+                      >
+                        Open link <Icon name="arrow" class="h-4 w-4" />
+                      </a>
+                    </div>
+                  )}
+                </Show>
                 <div class="message-signoff">
-                  <span>Some words were meant for this moment.</span>
+                  <span>Decrypted locally</span>
                   <button
                     type="button"
                     class="text-button"
@@ -457,7 +480,7 @@ export default function OpenMessage(props: {
                       : 'DRAND TIME LOCK'
                     : current().p
                       ? 'PIN PROTECTED'
-                      : 'A LITTLE TRUST GOES A LONG WAY'}
+                      : 'NO PIN REQUIRED'}
                 </span>
                 <span>ENCRYPT THIS ✳</span>
               </div>

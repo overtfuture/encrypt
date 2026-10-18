@@ -9,7 +9,7 @@ async function timedLink(page: Page) {
   await page.getByLabel('Your message').fill('Time holds the key.');
   await page.getByRole('switch', { name: 'Set an opening time' }).click();
   await page.getByLabel('Opening date and time').fill('2023-08-23T15:59');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   return page.getByLabel('Share link').inputValue();
 }
 
@@ -59,7 +59,7 @@ test('advancing the clock cannot reveal a message whose future beacon does not e
   await page.getByLabel('Your message').fill('No shortcuts through time.');
   await page.getByRole('switch', { name: 'Set an opening time' }).click();
   await page.getByLabel('Opening date and time').fill('2030-01-01T12:01');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   await page.goto(await page.getByLabel('Share link').inputValue());
   await page.clock.fastForward(86_400_000);
   await expect(page.getByRole('status')).toContainText('drand');
@@ -85,18 +85,18 @@ test('retains the PIN requirement through a beacon outage and a wrong attempt', 
   await timedLink(page);
   await page.getByRole('switch', { name: 'Require a PIN' }).click();
   await page.getByLabel('Choose a PIN').fill('024680');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   await page.goto(await page.getByLabel('Share link').inputValue());
   await page.clock.fastForward(61_000);
   await page.getByLabel('Enter PIN').fill('111111');
-  await page.getByRole('button', { name: 'Reveal message' }).click();
+  await page.getByRole('button', { name: 'Decrypt message' }).click();
   await expect(page.getByRole('status')).toContainText('drand');
   drand.available = true;
   await page.getByRole('button', { name: 'Check again' }).click();
   await expect(page.getByRole('alert')).toContainText('PIN');
   await expect(page.getByTestId('revealed-message')).toHaveCount(0);
   await page.getByLabel('Enter PIN').fill('024680');
-  await page.getByRole('button', { name: 'Reveal message' }).click();
+  await page.getByRole('button', { name: 'Decrypt message' }).click();
   await expect(page.getByTestId('revealed-message')).toHaveText(
     'Time holds the key.',
   );

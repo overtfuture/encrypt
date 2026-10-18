@@ -34,7 +34,7 @@ export class TimelockUnavailableError extends Error {
     super(
       reason === 'pending'
         ? 'Waiting for drand’s unlock beacon.'
-        : 'The drand unlock beacon is unavailable. Your message stays sealed.',
+        : 'The drand unlock beacon is unavailable. Your message stays locked.',
     );
     this.name = 'TimelockUnavailableError';
   }

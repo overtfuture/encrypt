@@ -28,7 +28,7 @@ test('preserves the deployment path in share links and loads the QR worker', asy
 
   await page.goto('./');
   await page.getByLabel('Your message').fill('A message from GitHub Pages.');
-  await page.getByRole('button', { name: 'Seal & share' }).click();
+  await page.getByRole('button', { name: 'Encrypt & share' }).click();
   const link = await page.getByLabel('Share link').inputValue();
   expect(new URL(link).pathname).toBe(site.pathname);
   expect(new URL(link).origin).toBe(site.origin);
