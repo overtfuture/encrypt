@@ -9,6 +9,7 @@ import {
   contactText,
   encryptMessage,
   generateIdentity,
+  parseContact,
 } from '../src/lib/identity/messages';
 import beacons from './fixtures/quicknet.json' with { type: 'json' };
 
@@ -427,8 +428,134 @@ async function createLink(page: Page, body: string) {
 
 async function openStoredContact(page: Page, name: string) {
   await showContactList(page);
-  await page.getByRole('button', { name: new RegExp(name) }).click();
+  await page.getByRole('button', { name: new RegExp('^' + name) }).click();
 }
+
+async function openContactActions(page: Page, name: string) {
+  await showContactList(page);
+  await page.getByLabel(`Actions for ${name}`, { exact: true }).click();
+}
+
+test('deleting a contact updates open tabs and keeps saved messages available on re-add', async ({
+  page,
+  context,
+}) => {
+  await mockPasskeys(page, 23);
+  await page.goto('./');
+  await createProfile(page, 'Local profile');
+  const recipient = await parseContact(await shareCard(page));
+  const alice = await generateIdentity('Alice');
+  const aliceCard = contactText(alice.contact);
+  const bob = await generateIdentity('Bob');
+  await addCard(page, contactText(bob.contact));
+  await addCard(page, aliceCard);
+
+  const body = 'A saved message from Alice';
+  const message = await encryptMessage(alice, recipient, body);
+  const openMessage = async () => {
+    await page.getByRole('button', { name: 'Open link', exact: true }).click();
+    await page.getByLabel('Encrypted message to open').fill(message);
+    await page
+      .getByRole('button', { name: 'Open message', exact: true })
+      .click();
+  };
+  await openMessage();
+  await expect(page.getByTestId('identity-plaintext')).toHaveText(body);
+
+  const otherTab = await context.newPage();
+  await mockPasskeys(otherTab, 23);
+  await otherTab.goto('./');
+  await unlock(otherTab);
+  await openStoredContact(otherTab, 'Alice');
+  await otherTab.getByLabel('Private message').fill('Draft in another tab');
+  await otherTab.getByRole('button', { name: 'Contact details' }).click();
+
+  await openContactActions(page, 'Alice');
+  const deleteButton = page.getByRole('button', { name: 'Delete contact' });
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await deleteButton.click();
+  await expect(page.getByRole('button', { name: /^Alice/ })).toBeVisible();
+
+  await openContactActions(page, 'Alice');
+  page.once('dialog', (dialog) => dialog.accept());
+  await deleteButton.click();
+  for (const tab of [page, otherTab]) {
+    await expect(tab.getByRole('button', { name: /^Alice/ })).toHaveCount(0);
+    await expect(tab.getByRole('button', { name: /^Bob/ })).toBeVisible();
+    await expect(
+      tab.getByRole('region', { name: 'Contact details' }),
+    ).toHaveCount(0);
+  }
+
+  await page.reload();
+  await unlock(page);
+  await expect(page.getByRole('button', { name: /^Alice/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Bob/ })).toBeVisible();
+  await openMessage();
+  await expect(page.getByRole('button', { name: 'Add sender' })).toBeVisible();
+  await page.getByRole('button', { name: 'Dismiss link' }).click();
+  await expect(page.getByRole('button', { name: 'Add sender' })).toHaveCount(0);
+  await addCard(page, aliceCard);
+  await expect(page.getByTestId('identity-plaintext')).toHaveText(body);
+  await openStoredContact(otherTab, 'Alice');
+  await expect(otherTab.getByLabel('Private message')).toHaveValue('');
+});
+
+test('clearing a thread removes sent and received messages while keeping both contacts', async ({
+  page,
+  context,
+}) => {
+  await mockPasskeys(page, 24);
+  await page.goto('./');
+  await createProfile(page, 'Local profile');
+  const recipient = await parseContact(await shareCard(page));
+  const alice = await generateIdentity('Alice');
+  const bob = await generateIdentity('Bob');
+  await addCard(page, contactText(bob.contact));
+  await createLink(page, 'Keep this message for Bob');
+  await addCard(page, contactText(alice.contact));
+  await createLink(page, 'Clear this reply to Alice');
+  const inbound = await encryptMessage(
+    alice,
+    recipient,
+    'Clear this message from Alice',
+  );
+  await page.getByRole('button', { name: 'Open link', exact: true }).click();
+  await page.getByLabel('Encrypted message to open').fill(inbound);
+  await page.getByRole('button', { name: 'Open message', exact: true }).click();
+  await expect(page.getByTestId('identity-plaintext')).toBeVisible();
+
+  const otherTab = await context.newPage();
+  await mockPasskeys(otherTab, 24);
+  await otherTab.goto('./');
+  await unlock(otherTab);
+  await openStoredContact(otherTab, 'Alice');
+  await expect(otherTab.getByTestId('outgoing-message')).toBeVisible();
+
+  await openContactActions(page, 'Alice');
+  const clearButton = page.getByRole('button', { name: 'Clear messages' });
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await clearButton.click();
+  await openStoredContact(page, 'Alice');
+  await expect(page.getByTestId('identity-plaintext')).toBeVisible();
+  await expect(page.getByTestId('outgoing-message')).toBeVisible();
+
+  await openContactActions(page, 'Alice');
+  page.once('dialog', (dialog) => dialog.accept());
+  await clearButton.click();
+  await expect(otherTab.getByText('Start the conversation')).toBeVisible();
+  await expect(otherTab.getByTestId('identity-plaintext')).toHaveCount(0);
+  await expect(otherTab.getByTestId('outgoing-message')).toHaveCount(0);
+
+  await page.reload();
+  await unlock(page);
+  await openStoredContact(page, 'Alice');
+  await expect(page.getByText('Start the conversation')).toBeVisible();
+  await openStoredContact(page, 'Bob');
+  await expect(page.getByTestId('outgoing-message')).toHaveText(
+    'Keep this message for Bob',
+  );
+});
 
 test('two profiles exchange links, authenticate first contact, and reload encrypted history', async ({
   browser,

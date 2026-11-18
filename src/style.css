@@ -412,6 +412,9 @@ p {
   color: var(--muted);
   font-size: 0.88rem;
 }
+.contact-entry {
+  position: relative;
+}
 .contact-row {
   display: flex;
   gap: 0.65rem;
@@ -420,7 +423,7 @@ p {
   width: 100%;
   text-align: left;
   border-radius: 12px;
-  padding: 0.7rem 0.55rem;
+  padding: 0.7rem 3.15rem 0.7rem 0.55rem;
 }
 .contact-row:hover,
 .contact-row.selected {
@@ -428,6 +431,34 @@ p {
 }
 .contact-row.selected {
   box-shadow: inset 3px 0 var(--accent);
+}
+.contact-menu-trigger {
+  position: absolute;
+  top: 0.625rem;
+  right: 0.25rem;
+  width: 2.65rem;
+  font-size: 1.25rem;
+  list-style: none;
+}
+.contact-menu-trigger::-webkit-details-marker {
+  display: none;
+}
+.contact-menu[open] > .contact-menu-trigger {
+  background: var(--tint);
+}
+.contact-menu-actions {
+  display: grid;
+  justify-items: stretch;
+  width: max-content;
+  margin: 0.25rem 0.25rem 0.5rem auto;
+  padding: 0.25rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.contact-menu-actions button {
+  justify-content: flex-start;
+  color: var(--danger);
 }
 .avatar {
   flex: none;

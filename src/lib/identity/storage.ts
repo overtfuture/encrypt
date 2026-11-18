@@ -136,15 +136,25 @@ export async function saveContact(
 ): Promise<void> {
   const valid = await parseContact(contactText(contact));
   return transaction<void>('contacts', 'readwrite', (s, done) => {
-    const count = s.count();
-    count.onsuccess = () => {
-      if (count.result >= 200) {
-        s.transaction.abort();
-        return;
-      }
-      s.add({ contact: valid, verified }, valid.id);
-      done();
+    const existing = s.getKey(valid.id);
+    existing.onsuccess = () => {
+      if (existing.result !== undefined) return done();
+      const count = s.count();
+      count.onsuccess = () => {
+        if (count.result >= 200) {
+          s.transaction.abort();
+          return;
+        }
+        s.add({ contact: valid, verified }, valid.id);
+        done();
+      };
     };
+  });
+}
+export function deleteContact(id: string): Promise<void> {
+  return transaction('contacts', 'readwrite', (s, done) => {
+    s.delete(id);
+    done();
   });
 }
 export async function verifyContact(id: string): Promise<void> {
@@ -213,6 +223,14 @@ export function findImported(
   return transaction('messages', 'readonly', (s, done) => {
     const request = s.index('source').get([owner, source]);
     request.onsuccess = () => done(request.result);
+  });
+}
+
+export function clearHistory(owner: string, contact: string): Promise<void> {
+  return transaction('messages', 'readwrite', (s, done) => {
+    // The message key starts with the owner and contact, then a direction string.
+    s.delete(IDBKeyRange.bound([owner, contact], [owner, contact, []]));
+    done();
   });
 }
 
