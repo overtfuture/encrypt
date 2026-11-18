@@ -43,7 +43,7 @@ jobs:
         run: npm test
 
       - name: Install browser and system dependencies
-        run: npx playwright install --with-deps chrome
+        run: npx playwright install --with-deps chrome webkit
 
       - name: Run browser tests
         run: npm run test:e2e
@@ -60,6 +60,11 @@ jobs:
 
       - name: Test production site
         run: npm run test:production
+        env:
+          PAGES_BASE_PATH: ${{ format('{0}/', steps.pages.outputs.base_path) }}
+
+      - name: Test production site in WebKit
+        run: npm run test:webkit
         env:
           PAGES_BASE_PATH: ${{ format('{0}/', steps.pages.outputs.base_path) }}
 

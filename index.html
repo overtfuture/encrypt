@@ -6,8 +6,12 @@
     <meta name="theme-color" content="#ffffff" />
     <meta name="referrer" content="no-referrer" />
     <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; media-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
+    <meta
       name="description"
-      content="Encrypt text in your browser and share it as a link or QR code. Add an optional unlock time or PIN."
+      content="Create a local passkey identity, exchange public contacts, and manually share encrypted messages with optional opening dates."
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>encrypt this</title>

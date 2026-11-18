@@ -1,76 +1,74 @@
 # encrypt this
 
-A client-side text-sharing site built with SolidJS, TypeScript, Tailwind CSS and Vite. Encrypt a message with an optional unlock time and PIN, then share a link or QR code. Timed messages use drand's tlock library; encryption and decryption stay in the browser.
+A static SolidJS/TypeScript/Vite app for exchanging authenticated encrypted messages through shareable links or a direct WebRTC chat. Create a local profile with a compatible passkey and exchange public contact cards. Conversations are stored encrypted in this browser.
+
+## Use
+
+1. Select **Create profile with passkey**, then **Verify passkey** with the same credential. A display name is optional. Use a regular browser window if you want your local profile and chats to persist between visits.
+2. Open **Profile** to export an encrypted identity backup. Optionally set up a recovery code, confirm it, and export a new backup. Keep the code separately. Backups restore the profile. Clearing browser data removes local contacts and chats.
+3. Open **My contact** in the top bar to copy your public contact link or share a QR code. To add someone, review and save their card. Compare the full fingerprint over a trusted channel before marking the contact verified. Both contact statuses can exchange messages.
+4. Select a contact, write a message, and choose **Create link**. Copy the link and send it through your own messaging app. For longer messages, share the encrypted text or file. Outgoing messages can be shared again from the conversation.
+5. Open a received link, or use **Open link** to paste encrypted text or import a file. After passkey unlock, an authenticated message from a saved contact opens in that conversation. A link from an unknown sender waits for their contact card. Previously opened messages are available the next time you unlock this browser.
+
+**Set an opening time** adds a cryptographic drand Quicknet timelock. Once the time passes, the recipient unlocks their profile, gets the public beacon using the link offered in the app, and pastes its JSON. Opening times are rounded up to a three-second release round. After the message is opened, its encrypted local history can be read again without the beacon.
+
+The previous link/PIN workflow, Markdown rendering and automatic URL redirects have been removed at the owner’s request. Old payloads are no longer supported by this version. The prior implementation remains in Git history.
+
+## Live chat
+
+1. Both people unlock the app and save each other’s contact cards. Open the conversation and choose **Live chat**.
+2. One person chooses **Create invite** and sends the encrypted code through a channel they already use. The other person pastes it into **Join live chat** and sends the reply code back.
+3. The person who created the invite pastes the reply into the original tab and chooses **Connect**. Once connected, the setup panel closes and both people can use **Send live** in the conversation.
+
+Live chat uses a text-only WebRTC data channel with manual signaling and an empty ICE server list. It requires direct network reachability, typically on the same network. Keep both tabs open and unlocked. Each tab supports one live chat, and locking or reloading ends the connection. Use encrypted links whenever a direct connection is unavailable or the recipient is offline. Your peer’s browser participates in direct network discovery and can learn network address information.
+
+The default browser tests exercise the app flow with a test transport. On a host where browser contexts can establish a direct UDP connection, run the native smoke test with `TEST_DIRECT_WEBRTC=1 npm run test:e2e -- -g 'native WebRTC'`.
+
+## Run and deploy
 
 ```sh
-npm install
+npm ci
 npm run dev
-```
-
-Open the local URL printed by Vite. Camera access and Web Crypto require HTTPS or localhost. To share with other people, deploy the production build to an HTTPS static host; localhost links only work on your own device.
-
-```sh
 npm test
 npm run test:e2e
+npm run format:check
 npm run build
 npm run test:production
+npm run test:webkit
 npm run preview
 ```
 
-The browser tests use an installed Google Chrome, on desktop and mobile viewport profiles. `dist/` is the deployable static site; no backend, runtime environment variables, database or accounts are needed. Vite's default deployment target is the root of a domain. For a subpath, set the build-time `PAGES_BASE_PATH` (including a trailing slash), for example `PAGES_BASE_PATH=/encrypt/ npm run build`.
+Node 24, HTTPS in production, and a browser/provider supporting WebAuthn PRF are required. Supported localhost is suitable for development. Tests use Google Chrome and Playwright WebKit; install them with `npx playwright install chrome webkit` if needed. TypeScript checking is part of `npm run build`; this repository has no separate lint configuration.
 
-## GitHub Pages
+`dist/` is the complete static output. No backend/environment secrets are needed. Existing GitHub Pages CI/deployment is preserved. Set Pages source to GitHub Actions and deploy the default branch through the existing workflow.
 
-The [CI and Pages workflow](.github/workflows/ci-pages.yml) runs on branch pushes and pull requests. It installs locked dependencies with Node.js 24, checks formatting, runs unit and browser tests, builds the site, and tests the production build. Only successful builds from the repository's default branch deploy. You can also run it manually from the Actions tab on the default branch. Live drand smoke tests remain opt-in; CI uses recorded, verified beacon fixtures.
-
-After adding this project to your GitHub repository:
-
-1. In **Settings → Pages → Build and deployment**, choose **GitHub Actions** as the source.
-2. Push to the default branch, or run **CI and Pages** manually.
-3. Open the deployment URL shown in the workflow's **github-pages** environment.
-
-No personal access token or deployment secrets are needed. The workflow reads the configured Pages URL and automatically builds for its path, including `/encrypt/` project sites or the root of a custom domain. Share links and QR codes retain the hostname and path of the page where they were created. Custom domains must first be configured in Pages settings.
-
-To verify a project-path build locally:
+For a project subpath:
 
 ```sh
 PAGES_BASE_PATH=/encrypt/ npm run build
 PAGES_BASE_PATH=/encrypt/ npm run test:production
 ```
 
-## Sharing and privacy
+Keep the hostname stable: it is the exact WebAuthn RP ID. Paths are not WebAuthn security boundaries; use a dedicated trusted origin rather than sharing an origin with untrusted apps. A different hostname requires recovery plus a new compatible passkey. Changing paths alone does not change the RP or origin-local vault.
 
-- Both QR codes and links contain the complete encrypted payload in a URL fragment (`#…`). Fragments are not sent in the normal HTTP request. The site makes no message-storage requests, loads its fonts locally, and stores no messages or PINs in localStorage.
-- New dated messages use **drand Quicknet timelock encryption**. The random message key is encrypted to a future beacon round with `tlock-js`, using pinned Quicknet parameters. A verified signature for that exact round is required to decrypt. Advancing the clock or removing the countdown does not supply that signature. Encryption needs no network request; opening requests only public beacon data from fixed drand HTTPS relays. Your message, PIN and message key are not sent to drand.
-- The countdown timestamp and beacon round are readable, authenticated metadata. The selected time is rounded **up** to Quicknet's next 3-second round, never down. The device clock controls the countdown and when the first unlock request is attempted; incorrect clocks can affect the display or delay requests but cannot create future beacon signatures.
-- Without an opening date or PIN, the message key is included in the payload and anyone holding it can decrypt immediately. A dated message includes only the tlock-encrypted key; anyone holding it can decrypt after its beacon is released unless a PIN is also required.
-- With a PIN, AES-256-GCM encrypts the message and separately wraps its random key with a PBKDF2-SHA256-derived key (600,000 iterations, random 16-byte salt). Random 12-byte IVs are used for both operations, and the version, date and protection mode are authenticated. The PIN is not included in the payload. Short numeric PINs can still be guessed offline; use longer codes and send them separately.
-- PINs are 4–12 digits and retain leading zeroes. Forgotten PINs cannot be recovered. Messages cannot be revoked or changed after sharing, and recipients can retain revealed text.
-- When both a date and PIN are selected, the PIN-wrapped key is itself encrypted with tlock. Both the released beacon and the correct PIN are required. Existing **version-1** links still open with their original behavior; legacy dated links show a notice that their countdown can be bypassed. They cannot be retroactively made secure by rebuilding the site.
-- Timed opening depends on drand's security and availability. If a beacon is unavailable, the message stays sealed and the page retries after 10 seconds, then 30 seconds, then once per minute; a manual retry is also available. Each attempt tries up to four official relays with 5-second request timeouts. Only verified public beacons are cached in memory (up to 32 rounds), and requests/retries are canceled on reset or navigation. Once a beacon is published, it remains usable. A network shutdown before a target round could prevent unlocking; enough compromised participants could undermine the timing guarantee. See [drand's security assumptions](https://docs.drand.love/docs/timelock-encryption/).
-- Cryptography code loads with the app before a countdown starts, so opening an already-loaded page does not depend on fetching a later JavaScript chunk. Clock corrections rearm the countdown/retry flow; a verified beacon is still required regardless of the displayed time.
-- Text is limited to 16,000 UTF-8 bytes. QR capacity depends on the final URL and payload size. If it does not fit, the app preserves the share link. Very long links may be truncated by messaging apps or QR software.
-- JavaScript running on the page can access the message and key. Use a trusted HTTPS host, review deployed code, and keep third-party scripts off the page. The hosting service can observe ordinary request metadata, but is not given the payload by this application.
+The CSP is included in HTML for GitHub Pages. Where the host supports headers, also set `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: no-referrer`. Keep HTML uncached/revalidated and use immutable hashed assets. Do not add third-party scripts. The CSP permits local assets, local QR workers, data/blob images, and inline styles used by the existing styling; it blocks remote scripts, frames, and application network destinations. Browsers ignore frame-ancestors in a meta CSP, hence the host-header recommendation.
 
-## Opening messages
+## Recovery and limits
 
-Follow a share link, paste a link or raw payload into **Open a message**, upload a QR image, or use a camera. No-PIN messages reveal automatically when their opening time arrives. PIN-protected messages require the sender's PIN after that time. QR decoding runs locally using a bundled worker.
+The passkey cryptographically unwraps a random local vault key through PRF and HKDF. Ordinary successful WebAuthn authentication is insufficient. Missing PRF output fails closed. Setup always performs an assertion after creation and uses that result for vault wrapping, matching the later unlock path. Creation-only PRF support is not accepted; the provider may prompt twice.
 
-Decrypted text renders as Markdown, including headings, lists, tables, code, and clickable links. Raw HTML is escaped; executable URL schemes are rejected. Images appear as links so opening a message does not request remote image content. Links open in a new tab without a referrer. **Copy text** copies the original message, including Markdown syntax.
+A synced passkey does **not** contain this app’s vault. Restore requires the encrypted backup plus either the original working passkey on the original hostname or the recovery code configured in that backup. Recovery creates a new passkey wrapper for the **same messaging identity**. It never silently generates a replacement identity. A new wrapper does not revoke older backups or their old passkey/recovery credentials. Restore will not overwrite a local identity. Concurrent writes use transactional compare-and-swap.
 
-If the complete decrypted message is an absolute HTTP or HTTPS URL, the page redirects to it automatically after the unlock time and correct PIN, if required. Leading and trailing whitespace are ignored. Other URL schemes, embedded credentials, and URLs with surrounding text do not trigger redirects. Automatic redirects also omit the referrer. Existing links retain their original message content and gain the same rendering behavior when opened in this version.
+A page session locks after five minutes without pointer/keyboard activity, on page exit, or with **Lock**. Reload starts locked. Plaintext drafts, messages, recovery codes and key references are cleared where feasible, but JavaScript/browser memory erasure cannot be guaranteed. Clipboard contents and downloaded files are outside that clearing.
 
-Payloads are base64url-encoded JSON envelopes. Version 1 is retained for old links and new undated messages. Version 2 is used for new timed messages and includes the public UTC opening timestamp, Quicknet round, encrypted message and its IV, tlock-encrypted key package, and optional PIN salt/wrapping IV. Version, timestamp, PIN mode and round are authenticated by AES-GCM. Version-2 parsing rejects timestamps inconsistent with the round, unexpected chains/recipients, and unprotected-key replacements. Both versions reject unsupported versions, malformed encodings, invalid dates, incorrect key sizes and oversized inputs.
+Messages are limited to 16,000 UTF-8 bytes. Contact names are at most 80 UTF-8 bytes. Ciphertext links are offered up to 8,000 characters. Larger messages use text or files. Contact QR payloads can be up to 800 characters. Contacts, verification and chat history are local to this browser and origin. The app deduplicates authenticated messages in the local archive. The pending list can hold up to 20 links per profile. Drafts stay in memory until you lock or reload.
 
-## Timelock verification
+## Security and validation
 
-`npm test` uses recorded public Quicknet beacons with their real signatures and the real tlock/verification algorithms; transport responses are controlled so tests work offline. Browser tests do the same and cover countdowns, clock jumps, unavailable-beacon retries and legacy compatibility. Fixture beacons came from the official Quicknet relay for rounds 992, 1000 and 1001.
+See [protocol and threat model](docs/identity-protocol.md) and [validation / manual compatibility matrix](docs/validation.md).
 
-An opt-in live smoke test creates a short future message, waits for its actual public beacon, and decrypts it over the network:
+HPKE uses the maintained `@hpke/core@1.10.1` package (MIT), RFC 9180 Auth mode, P-256/HKDF-SHA256/AES-128-GCM. Selected-suite RFC vectors and real cryptographic round trips are tested. The library is not represented as independently audited; review its [upstream source](https://github.com/dajiaji/hpke-js) and [security policy](https://github.com/dajiaji/hpke-js/blob/main/SECURITY.md). The policy’s version table was stale relative to the installed release when checked. Timelocking reuses pinned `tlock-js@0.9.0` and `drand-client@1.2.5`, with pinned Quicknet parameters and signature verification.
 
-```sh
-LIVE_DRAND=1 npm test -- src/lib/timelock.live.test.ts
-LIVE_DRAND=1 npm run test:production -- --grep "live future drand"
-```
+This is not Signal-equivalent, forward-secret, post-quantum, or a production-security certification. Compromised recipient private keys expose recorded messages; compromised origin JavaScript or devices can access secrets while in use. Static hosting does not eliminate that risk. Public identity metadata, key IDs, opening rounds and ciphertext lengths may be visible. Fragments avoid ordinary HTTP payload transmission but can still appear in browser history, extensions, clipboard history and the app’s own scripts. Timed opening relies on drand’s threshold and availability assumptions; released data cannot be revoked or made to expire.
 
-`tlock-js` and `drand-client` are distributed under Apache-2.0 OR MIT. Their MIT license notices are retained in [THIRD_PARTY_NOTICES.txt](public/THIRD_PARTY_NOTICES.txt), also included in the static build.
+WebAuthn provider/OS networking is outside application control. Browser tests mock the WebAuthn boundary; they do not establish physical authenticator compatibility or cross-device recovery.

@@ -4,5 +4,6 @@ node_modules/
 dist/
 test-results/
 test-results-production/
+test-results-webkit/
 playwright-report/
 .DS_Store
