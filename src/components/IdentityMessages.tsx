@@ -3,6 +3,7 @@ import {
   Match,
   Show,
   Switch,
+  batch,
   createEffect,
   createMemo,
   createSignal,
@@ -46,6 +47,8 @@ import {
   type Vault,
 } from '../lib/identity/vault';
 import {
+  clearHistory,
+  deleteContact,
   dismissPending,
   enqueueMessage,
   findImported,
@@ -91,6 +94,70 @@ const viewTitle = {
   details: 'Contact details',
   live: 'Live chat',
 };
+
+function ContactMenu(props: {
+  name: string;
+  busy: boolean;
+  onClear: () => void;
+  onDelete: () => void;
+}) {
+  let menu!: HTMLDetailsElement;
+  let trigger!: HTMLElement;
+  function close() {
+    menu.open = false;
+    trigger.focus();
+  }
+  return (
+    <details
+      class="contact-menu"
+      name="contact-actions"
+      ref={menu}
+      onFocusOut={(event) => {
+        if (
+          event.relatedTarget instanceof Node &&
+          !menu.contains(event.relatedTarget)
+        )
+          menu.open = false;
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && menu.open) {
+          event.preventDefault();
+          close();
+        }
+      }}
+    >
+      <summary
+        class="quiet-button contact-menu-trigger"
+        aria-label={`Actions for ${props.name}`}
+        ref={trigger}
+      >
+        <span aria-hidden="true">⋯</span>
+      </summary>
+      <div class="contact-menu-actions">
+        <button
+          class="quiet-button"
+          disabled={props.busy}
+          onClick={() => {
+            close();
+            props.onClear();
+          }}
+        >
+          Clear messages
+        </button>
+        <button
+          class="quiet-button"
+          disabled={props.busy}
+          onClick={() => {
+            close();
+            props.onDelete();
+          }}
+        >
+          Delete contact
+        </button>
+      </div>
+    </details>
+  );
+}
 
 export default function IdentityMessages() {
   const [record, setRecord] = createSignal<Vault>();
@@ -149,6 +216,7 @@ export default function IdentityMessages() {
   let controller: AbortController | undefined;
   let channel: BroadcastChannel | undefined;
   let refreshContacts = false;
+  let addContactButton: HTMLButtonElement | undefined;
   const currentContact = () =>
     contacts().find((row) => row.contact.id === selected());
   const myContact = () => contactText(record()!.contact);
@@ -452,6 +520,30 @@ export default function IdentityMessages() {
     setView('chat');
   }
 
+  function updateContacts(rows: SavedContact[]) {
+    const saved = new Set(rows.map((row) => row.contact.id));
+    batch(() => {
+      const id = selected();
+      if (id && !saved.has(id)) {
+        setSelected('');
+        if (view() === 'details' || view() === 'live') setView('chat');
+      }
+      const live = liveState();
+      if (live && !saved.has(live.contact)) liveChat.stop();
+      const outgoing = newestOutgoing();
+      if (outgoing && !saved.has(outgoing.contact))
+        setNewestOutgoing(undefined);
+      setDrafts((previous) => {
+        const entries = Object.entries(previous);
+        const kept = entries.filter(([id]) => saved.has(id));
+        return kept.length === entries.length
+          ? previous
+          : Object.fromEntries(kept);
+      });
+      setContacts(rows);
+    });
+  }
+
   async function importQueued(
     entry: PendingMessage,
     current: Unlocked,
@@ -463,6 +555,8 @@ export default function IdentityMessages() {
     if (previous) {
       const opened = await openHistory(current.key, previous);
       if (!active()) return;
+      if (!contacts().some((row) => row.contact.id === opened.contact))
+        return { entry, sender: opened.contact };
       await dismissPending(owner, source);
       if (active()) {
         openThread(opened.contact);
@@ -545,7 +639,7 @@ export default function IdentityMessages() {
       refreshContacts = false;
       try {
         const next = await readContacts();
-        if (active()) setContacts(next);
+        if (active()) updateContacts(next);
       } catch {
         if (active()) setError('Saved contacts could not be refreshed.');
       }
@@ -614,18 +708,57 @@ export default function IdentityMessages() {
   function saveReviewed() {
     run(async (active) => {
       const contact = review()!;
-      if (!contacts().some((row) => row.contact.id === contact.id))
-        await saveContact(contact);
+      await saveContact(contact);
       const next = await readContacts();
       if (!active()) {
         channel?.postMessage(null);
         return;
       }
-      setContacts(next);
+      updateContacts(next);
       setContactSource('');
       openThread(contact.id);
       notifyChange();
       setInboxReady(true);
+    });
+  }
+
+  function removeContact(contact: Contact) {
+    if (
+      !window.confirm(
+        `Delete ${contactName(contact)} from your contacts? Add them again to see your saved messages.`,
+      )
+    )
+      return;
+    run(async (active) => {
+      await deleteContact(contact.id);
+      if (active()) {
+        updateContacts(
+          contacts().filter((row) => row.contact.id !== contact.id),
+        );
+        setStatus('Contact deleted.');
+        if (document.activeElement === document.body) addContactButton?.focus();
+      }
+      channel?.postMessage(null);
+    });
+  }
+
+  function clearThread(contact: Contact) {
+    const owner = session()?.profile.identity.contact.id;
+    if (
+      !owner ||
+      !window.confirm(
+        `Clear all saved messages with ${contactName(contact)} from this browser? This can’t be undone.`,
+      )
+    )
+      return;
+    run(async (active) => {
+      await clearHistory(owner, contact.id);
+      if (active()) {
+        if (newestOutgoing()?.contact === contact.id)
+          setNewestOutgoing(undefined);
+        setStatus('Messages cleared.');
+        notifyChange();
+      } else channel?.postMessage(null);
     });
   }
 
@@ -1087,7 +1220,11 @@ export default function IdentityMessages() {
               <aside class="contact-sidebar" aria-label="Contacts">
                 <div class="sidebar-heading">
                   <h1>Chats</h1>
-                  <button class="quiet-button" onClick={addContact}>
+                  <button
+                    class="quiet-button"
+                    ref={addContactButton}
+                    onClick={addContact}
+                  >
                     Add contact
                   </button>
                 </div>
@@ -1101,7 +1238,7 @@ export default function IdentityMessages() {
                     }
                   >
                     {(row) => (
-                      <li>
+                      <li class="contact-entry">
                         <button
                           class="contact-row"
                           classList={{
@@ -1132,6 +1269,12 @@ export default function IdentityMessages() {
                             </Show>
                           </span>
                         </button>
+                        <ContactMenu
+                          name={contactName(row.contact)}
+                          busy={busy()}
+                          onClear={() => clearThread(row.contact)}
+                          onDelete={() => removeContact(row.contact)}
+                        />
                       </li>
                     )}
                   </For>
@@ -1443,7 +1586,7 @@ export default function IdentityMessages() {
                                       await verifyContact(contact().contact.id);
                                       const rows = await readContacts();
                                       if (active()) {
-                                        setContacts(rows);
+                                        updateContacts(rows);
                                         setStatus('Contact marked verified.');
                                       }
                                       channel?.postMessage(null);
