@@ -4,11 +4,10 @@ import {
   type ChainInfo,
   type RandomnessBeacon,
 } from 'drand-client';
-// Load cryptographic code before rendering a countdown. Waiting until opening
-// time could strand an already-open page after a deployment or connection loss.
+// Bundle crypto eagerly so an already-open page needs no later script request.
 import { timelockEncrypt, timelockDecrypt, Buffer } from 'tlock-js';
 
-// Version-2 payloads always use this exact Quicknet chain. Never take a public
+// Timed passkey envelopes always use this exact Quicknet chain. Never take a public
 // key, scheme, or relay URL from an untrusted payload or an /info response.
 const QUICKNET: ChainInfo = Object.freeze({
   public_key:
@@ -20,21 +19,14 @@ const QUICKNET: ChainInfo = Object.freeze({
   schemeID: 'bls-unchained-g1-rfc9380',
   metadata: Object.freeze({ beaconID: 'quicknet' }),
 });
-const RELAYS = [
-  'https://api.drand.sh',
-  'https://api2.drand.sh',
-  'https://api3.drand.sh',
-  'https://drand.cloudflare.com',
-];
-const REQUEST_TIMEOUT = 5000;
 const releasedBeacons = new Map<number, RandomnessBeacon>();
 
 export class TimelockUnavailableError extends Error {
   constructor(public readonly reason: 'pending' | 'network') {
     super(
       reason === 'pending'
-        ? 'Waiting for drand’s unlock beacon.'
-        : 'The drand unlock beacon is unavailable. Your message stays locked.',
+        ? 'Import the public drand unlock beacon for this round.'
+        : 'The imported drand beacon is unavailable or invalid. Your message stays locked.',
     );
     this.name = 'TimelockUnavailableError';
   }
@@ -75,7 +67,7 @@ function chainClient(get: ChainClient['get']): ChainClient {
       },
     },
     chain: () => ({
-      baseUrl: `${RELAYS[0]}/${QUICKNET.hash}`,
+      baseUrl: `https://api.drand.sh/${QUICKNET.hash}`,
       info: async () => QUICKNET,
     }),
     get,
@@ -85,74 +77,54 @@ function chainClient(get: ChainClient['get']): ChainClient {
   };
 }
 
+export async function importBeacon(
+  input: string,
+  expectedRound?: number,
+): Promise<number> {
+  if (input.length > 2048) throw new Error('Beacon is too large.');
+  const beacon = JSON.parse(input);
+  if (
+    !Number.isSafeInteger(beacon?.round) ||
+    beacon.round < 1 ||
+    typeof beacon.signature !== 'string' ||
+    !/^[a-f0-9]{96}$/i.test(beacon.signature) ||
+    typeof beacon.randomness !== 'string' ||
+    !/^[a-f0-9]{64}$/i.test(beacon.randomness) ||
+    beacon.previous_signature !== undefined
+  )
+    throw new Error('Invalid beacon.');
+  if (expectedRound !== undefined && beacon.round !== expectedRound)
+    throw new Error('This beacon belongs to another opening time.');
+  const verified = await fetchBeacon(
+    chainClient(async () => beacon),
+    beacon.round,
+  );
+  releasedBeacons.set(beacon.round, Object.freeze(verified));
+  if (releasedBeacons.size > 32)
+    releasedBeacons.delete(releasedBeacons.keys().next().value!);
+  return beacon.round;
+}
+
 async function releasedBeacon(
   round: number,
   signal?: AbortSignal,
 ): Promise<RandomnessBeacon> {
   signal?.throwIfAborted();
-  const cached = releasedBeacons.get(round);
-  if (cached) return cached;
-  let pending = false;
-  for (const relay of RELAYS) {
-    signal?.throwIfAborted();
-    const request = new AbortController();
-    const abort = () => request.abort(signal?.reason);
-    signal?.addEventListener('abort', abort, { once: true });
-    const timer = setTimeout(() => request.abort(), REQUEST_TIMEOUT);
-    try {
-      const client = chainClient(async () => {
-        const response = await fetch(
-          `${relay}/${QUICKNET.hash}/public/${round}`,
-          {
-            signal: request.signal,
-            credentials: 'omit',
-            referrerPolicy: 'no-referrer',
-            redirect: 'error',
-            headers: { Accept: 'application/json' },
-          },
-        );
-        if (response.status === 404) pending = true;
-        if (!response.ok) throw new Error('Beacon unavailable.');
-        if (Number(response.headers.get('content-length')) > 2048)
-          throw new Error('Invalid beacon response.');
-        const text = await response.text();
-        if (text.length > 2048) throw new Error('Invalid beacon response.');
-        const beacon = JSON.parse(text);
-        if (
-          beacon?.round !== round ||
-          typeof beacon.signature !== 'string' ||
-          !/^[a-f0-9]{96}$/i.test(beacon.signature) ||
-          typeof beacon.randomness !== 'string' ||
-          !/^[a-f0-9]{64}$/i.test(beacon.randomness) ||
-          beacon.previous_signature !== undefined
-        )
-          throw new Error('Invalid beacon response.');
-        return beacon as RandomnessBeacon;
-      });
-      // Verify against the pinned public key, including before caching or trying
-      // another relay. A plausible-looking JSON response is not a trusted beacon.
-      const beacon = await fetchBeacon(client, round);
-      signal?.throwIfAborted();
-      releasedBeacons.set(round, Object.freeze(beacon));
-      if (releasedBeacons.size > 32)
-        releasedBeacons.delete(releasedBeacons.keys().next().value!);
-      return beacon;
-    } catch {
-      signal?.throwIfAborted();
-    } finally {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-    }
-  }
-  throw new TimelockUnavailableError(pending ? 'pending' : 'network');
+  const beacon = releasedBeacons.get(round);
+  if (!beacon) throw new TimelockUnavailableError('pending');
+  return beacon;
 }
 
-export function validateTimedKey(ciphertext: string, round: number): void {
+export function validateTimedKey(
+  ciphertext: string,
+  round: number,
+  maxLength = 1600,
+): void {
   timeForRound(round);
   const begin = '-----BEGIN AGE ENCRYPTED FILE-----\n';
   const end = '-----END AGE ENCRYPTED FILE-----';
   if (
-    ciphertext.length > 1600 ||
+    ciphertext.length > maxLength ||
     !ciphertext.startsWith(begin) ||
     !ciphertext.trimEnd().endsWith(end)
   )
@@ -188,12 +160,17 @@ export async function decryptTimedKey(
   ciphertext: string,
   round: number,
   signal?: AbortSignal,
+  maxLength = 1600,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  validateTimedKey(ciphertext, round);
+  validateTimedKey(ciphertext, round, maxLength);
   signal?.throwIfAborted();
+  if (Date.now() < timeForRound(round))
+    throw new TimelockUnavailableError('pending');
+  const beacon = await releasedBeacon(round, signal);
   const client = chainClient(async (requested) => {
     if (requested !== round) throw new Error('Mismatched unlock round.');
-    return releasedBeacon(round, signal);
+    signal?.throwIfAborted();
+    return beacon;
   });
   const result = await timelockDecrypt(ciphertext, client);
   signal?.throwIfAborted();

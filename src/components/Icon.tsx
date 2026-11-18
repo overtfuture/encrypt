@@ -11,6 +11,7 @@ export type IconName =
   | 'link'
   | 'close'
   | 'eye'
+  | 'info'
   | 'upload'
   | 'mail'
   | 'spark';
@@ -63,6 +64,10 @@ export function Icon(props: { name: IconName; class?: string }) {
         <Match when={props.name === 'eye'}>
           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
           <circle cx="12" cy="12" r="3" />
+        </Match>
+        <Match when={props.name === 'info'}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5m0-8h.01" />
         </Match>
         <Match when={props.name === 'upload'}>
           <path d="M12 16V3m-4 4 4-4 4 4M4 16v5h16v-5" />
