@@ -436,6 +436,363 @@ async function openContactActions(page: Page, name: string) {
   await page.getByLabel(`Actions for ${name}`, { exact: true }).click();
 }
 
+test('sent and received messages render Markdown in the conversation', async ({
+  page,
+}) => {
+  await mockPasskeys(page, 28);
+  await page.goto('./');
+  await createProfile(page, 'Local sender');
+  const recipient = await parseContact(await shareCard(page));
+  const sender = await generateIdentity('Saved contact');
+  await addCard(page, contactText(sender.contact));
+  await createLink(page, '**Sent in bold**');
+  await expect(
+    page.getByTestId('outgoing-message').locator('strong'),
+  ).toHaveText('Sent in bold');
+
+  const inbound = await encryptMessage(sender, recipient, '> Received quote');
+  await page.getByRole('button', { name: 'Open link', exact: true }).click();
+  await page.getByLabel('Encrypted message to open').fill(inbound);
+  await page.getByRole('button', { name: 'Open message', exact: true }).click();
+  await expect(
+    page.getByTestId('identity-plaintext').locator('blockquote'),
+  ).toHaveText('Received quote');
+});
+
+test('resetting from the locked screen clears app data in open tabs', async ({
+  page,
+  context,
+}) => {
+  await mockPasskeys(page, 26);
+  await page.goto('./');
+  await createProfile(page, 'Profile to reset');
+  const owner = await parseContact(await shareCard(page));
+  const contact = await generateIdentity('Saved contact');
+  await addCard(page, contactText(contact.contact));
+  await createLink(page, 'Saved chat');
+
+  const stranger = await generateIdentity('Unknown sender');
+  const incoming = await encryptMessage(stranger, owner, 'Waiting for contact');
+  await page.getByRole('button', { name: 'Open link', exact: true }).click();
+  await page.getByLabel('Encrypted message to open').fill(incoming);
+  await page.getByRole('button', { name: 'Open message', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Add sender' })).toBeVisible();
+
+  const otherTab = await context.newPage();
+  await mockPasskeys(otherTab, 26);
+  await otherTab.goto('./');
+  await unlock(otherTab);
+  await expect(
+    otherTab.getByRole('button', { name: /^Saved contact/ }),
+  ).toBeVisible();
+  await otherTab.evaluate(() => {
+    sessionStorage.setItem('encrypt-this/staged-links', '[]');
+  });
+
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+  await page.evaluate((card) => {
+    localStorage.setItem('another-app', 'keep');
+    sessionStorage.setItem('another-app', 'keep');
+    location.hash = card;
+  }, contactText(contact.contact));
+  await expect(
+    page.getByText('A link is waiting for you after unlock.'),
+  ).toBeVisible();
+
+  const reset = page.getByRole('button', { name: 'Reset this browser' });
+  await expect(reset).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await reset.click();
+  await expect(
+    page.getByRole('button', { name: 'Unlock with passkey' }),
+  ).toBeVisible();
+  expect(
+    JSON.parse(await localRecords(page))[0].map(
+      (store: unknown[]) => store.length,
+    ),
+  ).toEqual([1, 1, 1, 1]);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await reset.click();
+  for (const tab of [page, otherTab]) {
+    await expect(
+      tab.getByRole('heading', { name: 'Create your profile' }),
+    ).toBeVisible();
+    await expect(
+      tab.getByText('A link is waiting for you after unlock.'),
+    ).toHaveCount(0);
+    const [stores, session, local] = JSON.parse(await localRecords(tab));
+    expect(stores).toEqual([[], [], [], []]);
+    expect(session['encrypt-this/staged-links']).toBeUndefined();
+    expect(local['another-app']).toBe('keep');
+  }
+  expect(await page.evaluate(() => sessionStorage.getItem('another-app'))).toBe(
+    'keep',
+  );
+  await createProfile(page, 'Fresh profile');
+  await expect(
+    page.getByText('Saved contacts will appear here.'),
+  ).toBeVisible();
+});
+
+test('a reset waits for a tab holding the database to close', async ({
+  page,
+  context,
+}) => {
+  await mockPasskeys(page, 27);
+  await page.goto('./');
+  await createProfile(page, 'Profile to reset');
+  await page.getByRole('button', { name: 'Lock', exact: true }).click();
+
+  const blocker = await context.newPage();
+  await blocker.goto('./');
+  await blocker.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open('encrypt-this-identities-v1');
+        request.onsuccess = () => {
+          Object.defineProperty(window, 'blockingConnection', {
+            value: request.result,
+          });
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      }),
+  );
+
+  const reset = page.getByRole('button', { name: 'Reset this browser' });
+  await expect(reset).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await reset.click();
+  await expect(page.getByRole('alert')).toContainText('Close other tabs');
+  await expect(
+    page.getByRole('button', { name: 'Unlock with passkey' }),
+  ).toBeDisabled();
+  await blocker.close();
+  await expect(
+    page.getByRole('heading', { name: 'Create your profile' }),
+  ).toBeVisible();
+});
+
+async function createGuestMessage(page: Page, message: string) {
+  await mockPasskeys(page, 25);
+  await page.goto('./');
+  await createProfile(page, 'Local sender');
+  const compose = page.getByRole('button', { name: 'New guest message' });
+  await expect(compose).toBeVisible();
+  await compose.click();
+  await page.getByLabel('Message for guest').fill(message);
+  await page.getByRole('button', { name: 'Encrypt guest message' }).click();
+}
+
+test('a guest can open a shared contact card and review it before saving', async ({
+  page,
+  browser,
+  baseURL,
+  viewport,
+}) => {
+  await mockPasskeys(page, 29);
+  await page.goto('./');
+  await createProfile(page, 'Guest sender');
+  await page
+    .getByRole('button', { name: 'Share my contact', exact: true })
+    .click();
+  const publicLink = await page
+    .getByLabel('My contact link', { exact: true })
+    .inputValue();
+  const share = page.getByRole('button', { name: 'Share as guest link' });
+  await expect(share).toBeVisible();
+  await share.click();
+  await expect(page.getByLabel('Include my contact')).toBeChecked();
+  await page.getByRole('button', { name: 'Encrypt contact card' }).click();
+  const detached = await page.getByLabel('Guest message link').inputValue();
+  const code = await page.getByLabel('Guest unlock code').inputValue();
+  expect(detached).not.toContain(code);
+  expect(detached).not.toContain(new URL(publicLink).hash.slice(1));
+  await page.getByLabel('Include unlock code with link and QR').check();
+  const bundled = await page.getByLabel('Guest message link').inputValue();
+
+  const context = await browser.newContext({ baseURL, viewport });
+  try {
+    const guest = await context.newPage();
+    await mockPasskeys(guest, 30);
+    await guest.goto(detached);
+    const card = guest.getByRole('region', { name: 'Shared contact' });
+    await expect(card).toHaveCount(0);
+    await guest.getByLabel('Unlock code', { exact: true }).fill(code);
+    await guest.getByRole('button', { name: 'Unlock message' }).click();
+    await expect(card).toContainText('Guest sender');
+    await expect(guest.getByRole('button', { name: /passkey/ })).toHaveCount(0);
+    await expect(guest.getByTestId('guest-plaintext')).toHaveCount(0);
+    const add = card.getByRole('link', { name: 'Review and add contact' });
+    await expect(add).toHaveAttribute('href', publicLink);
+
+    await visitLink(guest, bundled);
+    await expect(card).toContainText('Guest sender');
+    await add.click();
+    await expect(
+      guest.getByText('A link is waiting for you after unlock.'),
+    ).toBeVisible();
+    await createProfile(guest, 'Guest recipient');
+    await expect(
+      guest.getByText('Guest sender', { exact: true }),
+    ).toBeVisible();
+    await guest.getByRole('button', { name: 'Save reviewed contact' }).click();
+    await expect(
+      guest.getByRole('region', { name: 'Conversation with Guest sender' }),
+    ).toBeVisible();
+    await expect(
+      guest.getByText('Unverified', { exact: true }).last(),
+    ).toBeVisible();
+  } finally {
+    await context.close();
+  }
+});
+
+test('a guest can open an encrypted link with a separately shared code', async ({
+  page,
+  browser,
+  baseURL,
+  viewport,
+}) => {
+  const message = 'Private 🌿 <img src=https://example.com/pixel>';
+  await createGuestMessage(page, message);
+  const sharing = page.getByRole('region', { name: 'New guest message' });
+  await expect(sharing.getByRole('heading', { level: 3 })).toHaveText([
+    'Guest message',
+    'Separate unlock code',
+  ]);
+  const messageSection = sharing.getByRole('region', {
+    name: 'Guest message',
+    exact: true,
+  });
+  const codeSection = sharing.getByRole('region', {
+    name: 'Separate unlock code',
+    exact: true,
+  });
+  const link = await messageSection
+    .getByLabel('Guest message link')
+    .inputValue();
+  const code = await codeSection.getByLabel('Guest unlock code').inputValue();
+  expect(code).toMatch(/^[\w-]{22}$/);
+  expect(link).not.toContain(code);
+  expect(decodeURIComponent(link)).not.toContain(message);
+  const showCodeQr = codeSection.getByLabel('Show unlock code QR');
+  const codeQr = codeSection.getByRole('img', { name: 'Guest unlock code QR' });
+  await expect(showCodeQr).toBeVisible();
+  await expect(codeQr).toHaveCount(0);
+  await showCodeQr.check();
+  const image = await codeQr.screenshot();
+  await expect(page.getByLabel('Guest message link')).toHaveValue(link);
+  await showCodeQr.uncheck();
+  await expect(codeQr).toHaveCount(0);
+  const linkImage = await messageSection
+    .getByRole('img', { name: 'Guest message QR code' })
+    .screenshot();
+
+  const context = await browser.newContext({ baseURL, viewport });
+  try {
+    const guest = await context.newPage();
+    await guest.addInitScript(() => {
+      Object.defineProperty(window, 'indexedDB', {
+        get: () => {
+          throw new Error('Storage unavailable');
+        },
+      });
+    });
+    await guest.goto(link);
+    await expect(
+      guest.getByRole('heading', { name: 'Guest message' }),
+    ).toBeVisible();
+    await expect(guest.getByRole('button', { name: /passkey/ })).toHaveCount(0);
+    const rendered = guest.getByTestId('guest-plaintext');
+    await expect(rendered).toHaveCount(0);
+    const input = guest.getByLabel('Unlock code', { exact: true });
+    const upload = guest.getByLabel('Upload unlock code QR image');
+    await upload.setInputFiles({
+      name: 'message-link.png',
+      mimeType: 'image/png',
+      buffer: linkImage,
+    });
+    await expect(guest.getByRole('alert')).toContainText('unlock code QR');
+    await expect(input).toHaveValue('');
+    await input.fill('A'.repeat(22));
+    await guest.getByRole('button', { name: 'Unlock message' }).click();
+    await expect(guest.getByRole('alert')).toContainText('couldn’t open');
+    await upload.setInputFiles({
+      name: 'unlock-code.png',
+      mimeType: 'image/png',
+      buffer: image,
+    });
+    await expect(input).toHaveValue(code);
+    await expect(rendered).toHaveCount(0);
+    await guest.getByRole('button', { name: 'Unlock message' }).click();
+    await expect(rendered).toHaveText(message);
+    await expect(guest.locator('img')).toHaveCount(0);
+    expect(new URL(guest.url()).hash).toBe('');
+    await guest.reload();
+    await expect(rendered).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
+test('a QR code with the unlock code opens a guest message in one scan', async ({
+  page,
+  browser,
+  baseURL,
+  viewport,
+}) => {
+  const message = 'A message for the guest';
+  await createGuestMessage(page, `## ${message}`);
+  const code = await page.getByLabel('Guest unlock code').inputValue();
+  const includeCode = page.getByLabel('Include unlock code with link and QR');
+  await expect(includeCode).not.toBeChecked();
+  await page.getByLabel('Show unlock code QR').check();
+  await expect(
+    page.getByRole('img', { name: 'Guest unlock code QR' }),
+  ).toBeVisible();
+  await includeCode.check();
+  const sharing = page.getByRole('region', { name: 'New guest message' });
+  await expect(sharing.getByRole('heading', { level: 3 })).toHaveText([
+    'Guest message',
+  ]);
+  await expect(sharing.getByRole('img')).toHaveCount(1);
+  await expect(sharing.getByLabel('Guest unlock code')).toHaveCount(0);
+  const bundled = await page.getByLabel('Guest message link').inputValue();
+  expect(new URL(bundled).hash).toContain(code);
+  const image = await page
+    .getByRole('img', { name: 'Guest message QR code' })
+    .screenshot();
+  await includeCode.uncheck();
+  await expect(page.getByLabel('Guest message link')).not.toHaveValue(bundled);
+
+  const context = await browser.newContext({ baseURL, viewport });
+  try {
+    const guest = await context.newPage();
+    await guest.goto('./');
+    await guest.getByRole('button', { name: 'Open guest message' }).click();
+    await guest.getByLabel('Upload QR image').setInputFiles({
+      name: 'guest-message.png',
+      mimeType: 'image/png',
+      buffer: image,
+    });
+    const rendered = guest.getByRole('heading', { name: message, exact: true });
+    await expect(rendered).toBeVisible();
+    await expect(guest.getByLabel('Unlock code', { exact: true })).toHaveCount(
+      0,
+    );
+    await guest.getByRole('button', { name: 'Close guest message' }).click();
+    await expect(rendered).toHaveCount(0);
+
+    await guest.goto(bundled);
+    await expect(rendered).toBeVisible();
+    expect(new URL(guest.url()).hash).toBe('');
+  } finally {
+    await context.close();
+  }
+});
+
 test('deleting a contact updates open tabs and keeps saved messages available on re-add', async ({
   page,
   context,

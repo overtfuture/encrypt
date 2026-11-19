@@ -270,6 +270,22 @@ p {
 .gate-card form > .primary-button {
   width: 100%;
 }
+.guest-gate {
+  width: min(100%, 37rem);
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.guest-gate .guest-plaintext {
+  width: 100%;
+  padding: 1rem;
+  color: var(--ink);
+}
+.guest-plaintext p {
+  color: inherit;
+}
+.guest-gate .gate-card > .quiet-button {
+  align-self: flex-end;
+}
 .gate-card .optional {
   margin-left: 0.25rem;
 }
@@ -296,6 +312,9 @@ p {
   color: var(--accent-hover);
   font-size: 0.875rem;
   font-weight: 600;
+}
+.reset-browser-button {
+  color: var(--danger);
 }
 .backup-tools {
   margin-top: 0.9rem;
@@ -401,6 +420,10 @@ p {
 }
 .sidebar-heading h1 {
   font-size: 1.55rem;
+}
+.guest-compose-button {
+  align-self: flex-start;
+  margin-inline: 0.6rem;
 }
 .contact-list {
   flex: 1;
@@ -588,6 +611,30 @@ p {
   border: 1px solid var(--line);
   border-radius: 12px;
 }
+.guest-share-section {
+  align-self: stretch;
+  padding: 1rem;
+  background: var(--sidebar);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.guest-share-section h3 {
+  font-size: 1.1rem;
+}
+.guest-share-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.guest-share-option input {
+  margin: 0;
+}
+.guest-code {
+  font-family: ui-monospace, monospace;
+}
+.guest-qr {
+  width: min(100%, 22rem);
+}
 .scanner-input {
   margin: 0.3rem 0;
 }
@@ -714,13 +761,83 @@ p {
   padding: 0.65rem 0.85rem;
   background: #f1eff2;
   border-radius: 15px 15px 15px 4px;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .outgoing .bubble {
   background: var(--accent);
   color: white;
   border-radius: 15px 15px 4px 15px;
+}
+.message-markdown {
+  overflow-x: auto;
+}
+.message-markdown > * + *,
+.message-markdown blockquote > * + *,
+.message-markdown li > p + p {
+  margin-block-start: 0.65em;
+}
+.message-markdown :is(h1, h2, h3, h4, h5, h6) {
+  line-height: 1.25;
+}
+.message-markdown h1 {
+  font-size: 1.4em;
+}
+.message-markdown h2 {
+  font-size: 1.2em;
+}
+.message-markdown :is(ul, ol) {
+  padding-inline-start: 1.4em;
+}
+.message-markdown ul {
+  list-style: disc;
+}
+.message-markdown ol {
+  list-style: decimal;
+}
+.message-markdown .message-task {
+  list-style: none;
+}
+.message-markdown input[type='checkbox'] {
+  margin-inline-end: 0.45em;
+}
+.message-markdown blockquote {
+  padding-inline-start: 0.7em;
+  border-inline-start: 3px solid
+    color-mix(in srgb, currentColor 36%, transparent);
+}
+.message-markdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.17em;
+}
+.message-markdown a:focus-visible {
+  outline-color: currentColor;
+}
+.message-markdown pre,
+.message-markdown :not(pre) > code {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.message-markdown pre {
+  max-width: 100%;
+  padding: 0.6em;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  border-radius: 8px;
+}
+.message-markdown :not(pre) > code {
+  padding: 0.1em 0.25em;
+  border-radius: 4px;
+}
+.message-markdown table {
+  border-collapse: collapse;
+}
+.message-markdown :is(th, td) {
+  padding: 0.25em 0.5em;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  text-align: start;
+}
+.message-markdown hr {
+  opacity: 0.4;
 }
 .message-meta {
   display: flex;

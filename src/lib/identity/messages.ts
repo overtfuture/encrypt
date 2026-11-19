@@ -66,8 +66,9 @@ export async function generateIdentity(name: string): Promise<Identity> {
   };
 }
 export const contactText = (contact: Contact) => portable('ec1.', contact);
+export const CONTACT_CARD_LIMIT = 800;
 export async function parseContact(input: string): Promise<Contact> {
-  const v = parse('ec1.', input, 800);
+  const v = parse('ec1.', input, CONTACT_CARD_LIMIT);
   fields(v, ['v', 'a', 'n', 'k', 'id']);
   if (
     v.v !== 1 ||
