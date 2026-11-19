@@ -2,6 +2,7 @@ import { For, Show, createEffect, createSignal, onCleanup } from 'solid-js';
 import { link } from '../lib/identity/encoding';
 import { openHistory, type ChatMessage } from '../lib/identity/history';
 import { readHistory, type SavedContact } from '../lib/identity/storage';
+import { renderMessage } from '../lib/message-content';
 import { timeForRound } from '../lib/timelock';
 import { Icon } from './Icon';
 import { downloadText } from './ProfileBackup';
@@ -201,13 +202,12 @@ export default function Conversation(props: {
               return (
                 <li class="message-row" classList={{ outgoing }}>
                   <div
-                    class="bubble"
+                    class="bubble message-markdown"
                     data-testid={
                       outgoing ? 'outgoing-message' : 'identity-plaintext'
                     }
-                  >
-                    {message.body}
-                  </div>
+                    innerHTML={renderMessage(message.body)}
+                  />
                   <div class="message-meta">
                     <time datetime={new Date(message.savedAt).toISOString()}>
                       {displayTime(message.savedAt)}

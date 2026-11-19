@@ -2,13 +2,17 @@ import { createSignal, onCleanup, Show } from 'solid-js';
 import QrScanner from 'qr-scanner';
 import { Icon } from './Icon';
 
-export default function ScanInput(props: { onRead: (value: string) => void }) {
+export default function ScanInput(props: {
+  onRead: (value: string) => void;
+  unlockCode?: boolean;
+}) {
   const [cameraOpen, setCameraOpen] = createSignal(false);
   const [starting, setStarting] = createSignal(false);
   const [error, setError] = createSignal('');
   let video: HTMLVideoElement | undefined;
   let scanner: QrScanner | undefined;
   let alive = true;
+  const pasteTarget = () => (props.unlockCode ? 'the unlock code' : 'a link');
 
   function stop() {
     scanner?.destroy();
@@ -25,7 +29,7 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
     setError('');
     if (!navigator.mediaDevices?.getUserMedia) {
       setError(
-        'Camera access needs HTTPS or localhost. You can upload a QR image or paste a link instead.',
+        `Camera access needs HTTPS or localhost. You can upload a QR image or paste ${pasteTarget()} instead.`,
       );
       return;
     }
@@ -53,7 +57,7 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
       if (alive && scanner === current) {
         stop();
         setError(
-          'Could not access a camera. Check camera permissions, upload a QR image, or paste the link.',
+          `Could not access a camera. Check camera permissions, upload a QR image, or paste ${pasteTarget()}.`,
         );
       }
     } finally {
@@ -70,6 +74,7 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
       setError('Choose a QR image smaller than 15 MB.');
       return;
     }
+    stop();
     try {
       const result = await QrScanner.scanImage(file, {
         returnDetailedScanResult: true,
@@ -87,7 +92,9 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
   return (
     <div class="scanner-input">
       <div class="divider-label">
-        <span>or scan a QR code</span>
+        <span>
+          {props.unlockCode ? 'or scan the unlock code' : 'or scan a QR code'}
+        </span>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <button
@@ -104,7 +111,11 @@ export default function ScanInput(props: { onRead: (value: string) => void }) {
           <span>Upload QR</span>
           <input
             id="qr-upload"
-            aria-label="Upload QR image"
+            aria-label={
+              props.unlockCode
+                ? 'Upload unlock code QR image'
+                : 'Upload QR image'
+            }
             class="sr-only"
             type="file"
             accept="image/*"

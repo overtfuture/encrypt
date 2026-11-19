@@ -9,7 +9,21 @@ export type PendingMessage = {
   savedAt: number;
 };
 export const PENDING_LIMIT = 20;
+export const STAGED_LINKS_KEY = 'encrypt-this/staged-links';
 const DB = 'encrypt-this-identities-v1';
+
+export function deleteIdentityDatabase(onBlocked: () => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(DB);
+    request.onblocked = onBlocked;
+    request.onsuccess = () => resolve();
+    request.onerror = () =>
+      reject(
+        new Error('Local data could not be deleted. Try resetting again.'),
+      );
+  });
+}
+
 async function database(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB, 2);
@@ -54,7 +68,12 @@ async function transaction<T>(
 ): Promise<T> {
   const db = await database();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, mode);
+    const stores = typeof store === 'string' ? [store] : store;
+    const requiresProfile = mode === 'readwrite' && stores[0] !== 'vault';
+    const tx = db.transaction(
+      requiresProfile ? [...stores, 'vault'] : stores,
+      mode,
+    );
     let value: T;
     tx.oncomplete = () => {
       db.close();
@@ -68,16 +87,25 @@ async function transaction<T>(
         ),
       );
     };
-    try {
-      operation(
-        tx.objectStore(typeof store === 'string' ? store : store[0]),
-        (v) => {
-          value = v;
-        },
-      );
-    } catch (err) {
-      tx.abort();
-      reject(err);
+    const apply = () => {
+      try {
+        operation(tx.objectStore(stores[0]), (result) => {
+          value = result;
+        });
+      } catch (err) {
+        tx.abort();
+        reject(err);
+      }
+    };
+    if (requiresProfile) {
+      // An open tab can finish encrypting after the browser data was reset.
+      const profile = tx.objectStore('vault').getKey('identity');
+      profile.onsuccess = () => {
+        if (profile.result === undefined) tx.abort();
+        else apply();
+      };
+    } else {
+      apply();
     }
   });
 }

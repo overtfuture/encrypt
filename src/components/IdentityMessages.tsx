@@ -12,8 +12,10 @@ import {
   untrack,
 } from 'solid-js';
 import QRCode from 'qrcode';
+import { guestPrefix } from '../lib/guest-message';
 import { fingerprint, link, payload } from '../lib/identity/encoding';
 import {
+  CONTACT_CARD_LIMIT,
   contactText,
   createMessage,
   decryptMessage,
@@ -49,10 +51,12 @@ import {
 import {
   clearHistory,
   deleteContact,
+  deleteIdentityDatabase,
   dismissPending,
   enqueueMessage,
   findImported,
   PENDING_LIMIT,
+  STAGED_LINKS_KEY,
   readContacts,
   readPending,
   readVault,
@@ -78,14 +82,22 @@ import ProfileBackup, { readTextFile, type Action } from './ProfileBackup';
 import ScanInput from './ScanInput';
 import { Icon } from './Icon';
 import LiveChatPanel from './LiveChatPanel';
+import { GuestMessageComposer } from './GuestMessage';
 
 type View =
-  'chat' | 'contact' | 'share' | 'import' | 'profile' | 'details' | 'live';
+  | 'chat'
+  | 'contact'
+  | 'share'
+  | 'import'
+  | 'profile'
+  | 'details'
+  | 'live'
+  | 'guest'
+  | 'guest-contact';
 type Unlocked = { profile: Session; key: CryptoKey };
 type PendingNotice = { entry: PendingMessage; round?: number; sender?: string };
 const EMPTY_DRAFT: Draft = { body: '', timed: false, opening: '' };
 const IDLE = 5 * 60 * 1000;
-const STAGED_LINKS = 'encrypt-this/staged-links';
 const viewTitle = {
   contact: 'Add contact',
   share: 'Share my contact',
@@ -93,6 +105,8 @@ const viewTitle = {
   profile: 'Backup & recovery',
   details: 'Contact details',
   live: 'Live chat',
+  guest: 'New guest message',
+  'guest-contact': 'Share contact as guest',
 };
 
 function ContactMenu(props: {
@@ -159,7 +173,10 @@ function ContactMenu(props: {
   );
 }
 
-export default function IdentityMessages() {
+export default function IdentityMessages(props: {
+  onOpenGuest: (input: string) => void;
+  onResetData: () => void;
+}) {
   const [record, setRecord] = createSignal<Vault>();
   const [session, setSession] = createSignal<Unlocked>();
   const [loaded, setLoaded] = createSignal(false);
@@ -284,7 +301,8 @@ export default function IdentityMessages() {
   function stage(input: string, messageOnly = false) {
     const value = payload(input);
     if (!messageOnly && value.startsWith('ec1.')) {
-      if (value.length > 800) throw new Error('Contact link is too large.');
+      if (value.length > CONTACT_CARD_LIMIT)
+        throw new Error('Contact link is too large.');
       if (!/^ec1\.[\w-]+$/.test(value))
         throw new Error('Malformed contact link.');
     } else {
@@ -301,7 +319,7 @@ export default function IdentityMessages() {
   onMount(() => {
     try {
       const saved: unknown = JSON.parse(
-        sessionStorage.getItem(STAGED_LINKS) ?? '[]',
+        sessionStorage.getItem(STAGED_LINKS_KEY) ?? '[]',
       );
       if (Array.isArray(saved)) {
         for (const value of saved.slice(0, PENDING_LIMIT)) {
@@ -313,7 +331,7 @@ export default function IdentityMessages() {
     }
     const receiveFragment = () => {
       const hash = location.hash;
-      if (!hash) return;
+      if (!hash || guestPrefix(hash.slice(1))) return;
       try {
         stage(hash);
       } catch (cause) {
@@ -407,6 +425,23 @@ export default function IdentityMessages() {
       const label = name().trim();
       const binding = await registerPasskey(label, signal);
       if (active()) setEnrollment({ label, binding });
+    });
+  }
+
+  function resetBrowser() {
+    if (
+      busy() ||
+      !window.confirm(
+        'Delete all Encrypt This data in this browser? Your local profile, contacts, chat history, and waiting links will be permanently removed. Passkeys and exported backups are managed separately.',
+      )
+    )
+      return;
+    run(async (active) => {
+      await deleteIdentityDatabase(() => {
+        if (active())
+          setError('Close other tabs using Encrypt This to finish resetting.');
+      });
+      props.onResetData();
     });
   }
 
@@ -625,8 +660,8 @@ export default function IdentityMessages() {
     setStaged(values);
     try {
       if (values.length)
-        sessionStorage.setItem(STAGED_LINKS, JSON.stringify(values));
-      else sessionStorage.removeItem(STAGED_LINKS);
+        sessionStorage.setItem(STAGED_LINKS_KEY, JSON.stringify(values));
+      else sessionStorage.removeItem(STAGED_LINKS_KEY);
     } catch {
       // The active tab can still hold and open links in memory.
     }
@@ -876,6 +911,10 @@ export default function IdentityMessages() {
   }
 
   function submitMessage(value: string) {
+    if (guestPrefix(payload(value))) {
+      props.onOpenGuest(value);
+      return;
+    }
     stage(value, true);
     setMessageInput('');
     setView('chat');
@@ -1035,6 +1074,12 @@ export default function IdentityMessages() {
                     {error()}
                   </p>
                 </Show>
+                <button
+                  class="quiet-button"
+                  onClick={() => props.onOpenGuest('')}
+                >
+                  <Icon name="scan" /> Open guest message
+                </button>
                 <details class="gate-recovery">
                   <summary>Backup, recovery & compatibility</summary>
                   {backup()}
@@ -1044,6 +1089,13 @@ export default function IdentityMessages() {
                     session ends.
                   </p>
                 </details>
+                <button
+                  class="quiet-button reset-browser-button"
+                  disabled={busy()}
+                  onClick={resetBrowser}
+                >
+                  Reset this browser
+                </button>
               </div>
             </Show>
           </section>
@@ -1228,6 +1280,12 @@ export default function IdentityMessages() {
                     Add contact
                   </button>
                 </div>
+                <button
+                  class="quiet-button guest-compose-button"
+                  onClick={() => setView('guest')}
+                >
+                  <Icon name="mail" /> New guest message
+                </button>
                 <ul class="contact-list">
                   <For
                     each={sortedContacts()}
@@ -1485,6 +1543,12 @@ export default function IdentityMessages() {
                             >
                               <Icon name="copy" /> Copy contact link
                             </button>
+                            <button
+                              class="secondary-button"
+                              onClick={() => setView('guest-contact')}
+                            >
+                              <Icon name="link" /> Share as guest link
+                            </button>
                             <Show when={qr()}>
                               {(image) => (
                                 <img
@@ -1515,6 +1579,19 @@ export default function IdentityMessages() {
                               </p>
                             </details>
                           </div>
+                        </Match>
+                        <Match
+                          when={
+                            view() === 'guest' || view() === 'guest-contact'
+                          }
+                        >
+                          <GuestMessageComposer
+                            contact={current().profile.identity.contact}
+                            asContact={view() === 'guest-contact'}
+                            busy={busy()}
+                            run={run}
+                            copy={copy}
+                          />
                         </Match>
                         <Match when={view() === 'import'}>
                           <form

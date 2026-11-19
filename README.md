@@ -10,9 +10,23 @@ A static SolidJS/TypeScript/Vite app for exchanging authenticated encrypted mess
 4. Select a contact, write a message, and choose **Create link**. Copy the link and send it through your own messaging app. For longer messages, share the encrypted text or file. Outgoing messages can be shared again from the conversation.
 5. Open a received link, or use **Open link** to paste encrypted text or import a file. After passkey unlock, an authenticated message from a saved contact opens in that conversation. A link from an unknown sender waits for their contact card. Previously opened messages are available the next time you unlock this browser.
 
+To start over, select **Reset this browser** on the locked screen and confirm. This deletes the app’s local profile, contacts, messages, and waiting links. Your passkey provider and downloaded backups are managed separately.
+
 **Set an opening time** adds a cryptographic drand Quicknet timelock. Once the time passes, the recipient unlocks their profile, gets the public beacon using the link offered in the app, and pastes its JSON. Opening times are rounded up to a three-second release round. After the message is opened, its encrypted local history can be read again without the beacon.
 
-The previous link/PIN workflow, Markdown rendering and automatic URL redirects have been removed at the owner’s request. Old payloads are no longer supported by this version. The prior implementation remains in Git history.
+Chats and guest messages support Markdown, including headings, lists, task lists, tables, quotes, code blocks, and links. Raw HTML appears as text. Image references open as links when clicked.
+
+The previous link/PIN workflow and automatic URL redirects were removed at the owner’s request. Old payloads are no longer supported by this version. The prior implementation remains in Git history.
+
+## Guest messages
+
+From **Chats**, select **New guest message** to encrypt a message up to 5,000 UTF-8 bytes. Share the link or QR code, then send the generated unlock code separately. Turn on **Show unlock code QR** to display or download a QR code containing just the unlock code. The recipient can scan it or upload the image from the unlock screen, then select **Unlock message**.
+
+Select **Include my contact** to share your public contact card, with or without a note. You can also start from **My contact → Share as guest link**. The recipient can view the card without a passkey and select **Review and add contact** to save it through the regular contact flow.
+
+For one-scan opening, select **Include unlock code with link and QR**. Anyone with that combined link or QR code can read the message. If the message is too large for a QR code, share the link.
+
+The recipient can open the link directly or select **Open guest message** to paste it or scan the QR code. The guest page opens without a profile or passkey, and guest messages stay out of chat history. The app uses a fresh random key for each guest message. A saved link and its unlock code can be used again.
 
 ## Live chat
 
