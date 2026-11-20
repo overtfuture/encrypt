@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createPasskey, unlockPasskey } from './passkeys';
-import { encode } from './encoding';
+import { decode, encode } from './encoding';
 import { createVault, unlockVault, backupText, parseBackup } from './vault';
 afterEach(() => vi.unstubAllGlobals());
 function setup(create: unknown, get: unknown) {
@@ -24,18 +24,24 @@ function credential(prf?: Uint8Array, id = 1) {
     }),
   };
 }
-it('asserts after creation without PRF output, requires UV and uses fresh challenges', async () => {
-  const create = vi.fn().mockResolvedValue(credential()),
+it('enables PRF at registration and evaluates it with user verification on assertion', async () => {
+  const create = vi.fn(async ({ publicKey }: CredentialCreationOptions) => {
+      expect(publicKey?.extensions).toEqual({ prf: {} });
+      return credential();
+    }),
     get = vi.fn().mockResolvedValue(credential(new Uint8Array(32).fill(4)));
   setup(create, get);
   const result = await createPasskey('Alice');
   expect(result.prf[0]).toBe(4);
   expect(get).toHaveBeenCalledOnce();
   expect(
-    create.mock.calls[0][0].publicKey.authenticatorSelection.userVerification,
+    create.mock.calls[0][0].publicKey?.authenticatorSelection?.userVerification,
   ).toBe('required');
   expect(get.mock.calls[0][0].publicKey.userVerification).toBe('required');
-  expect(create.mock.calls[0][0].publicKey.challenge).not.toEqual(
+  expect(get.mock.calls[0][0].publicKey.extensions).toEqual({
+    prf: { eval: { first: decode(result.binding.input, 32) } },
+  });
+  expect(create.mock.calls[0][0].publicKey?.challenge).not.toEqual(
     get.mock.calls[0][0].publicKey.challenge,
   );
 });

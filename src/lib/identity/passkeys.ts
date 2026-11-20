@@ -4,11 +4,6 @@ import type { Binding } from './vault';
 type PRFResult = {
   prf?: { enabled?: boolean; results?: { first: ArrayBuffer } };
 };
-function extensions(input: string): AuthenticationExtensionsClientInputs {
-  return {
-    prf: { eval: { first: decode(input, 32) } },
-  } as AuthenticationExtensionsClientInputs;
-}
 function result(
   credential: PublicKeyCredential,
 ): Uint8Array<ArrayBuffer> | undefined {
@@ -46,7 +41,9 @@ export async function unlockPasskey(
       allowCredentials: [{ type: 'public-key', id: decode(binding.id) }],
       userVerification: 'required',
       timeout: 60000,
-      extensions: extensions(binding.input),
+      extensions: {
+        prf: { eval: { first: decode(binding.input, 32) } },
+      } as AuthenticationExtensionsClientInputs,
     },
   })) as PublicKeyCredential | null;
   if (!credential || encode(credential.rawId) !== binding.id)
@@ -54,7 +51,7 @@ export async function unlockPasskey(
   const bytes = result(credential);
   if (!bytes)
     throw new Error(
-      'This passkey/provider did not return PRF output. Your encrypted identity is unchanged.',
+      'This passkey did not provide the encryption output (WebAuthn PRF) needed for your profile. Check that you are using the same passkey provider. For a new profile, try a different provider or a security key that supports PRF.',
     );
   return bytes;
 }
@@ -86,13 +83,14 @@ export async function registerPasskey(
         },
         attestation: 'none',
         timeout: 60000,
-        extensions: extensions(input),
+        // Enable PRF here and evaluate it during verification, like later unlocks.
+        extensions: { prf: {} } as AuthenticationExtensionsClientInputs,
       },
     })
     .catch((cause: unknown) => {
       if (cause instanceof DOMException && cause.name === 'NotAllowedError')
         throw new Error(
-          'Passkey creation did not finish. To use a security key, select it in the browser prompt and follow the PIN and touch instructions. If the prompt keeps failing in a private window, try a regular window.',
+          'Passkey creation did not finish. Unlock your passkey manager and try again in a regular browser window. To use a security key, select it in the prompt and follow the PIN and touch instructions.',
         );
       throw cause;
     })) as PublicKeyCredential | null;

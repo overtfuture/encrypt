@@ -454,7 +454,7 @@ export default function IdentityMessages(props: {
         (cause: unknown) => {
           if (cause instanceof DOMException && cause.name === 'NotAllowedError')
             throw new Error(
-              'The passkey was created, but verification did not finish. Select Verify passkey to retry with the same key.',
+              'The passkey was created, but verification did not finish. Select Verify passkey and choose the same passkey manager or security key you used to save it.',
             );
           throw cause;
         },
