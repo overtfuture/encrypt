@@ -1,6 +1,8 @@
 import { Show, createSignal, onCleanup, onMount } from 'solid-js';
 import { GuestMessageOpener } from './components/GuestMessage';
+import { Icon } from './components/Icon';
 import IdentityMessages from './components/IdentityMessages';
+import OfflineStatus from './components/OfflineStatus';
 import { guestPrefix } from './lib/guest-message';
 import { STAGED_LINKS_KEY } from './lib/identity/storage';
 
@@ -58,7 +60,10 @@ export default function App() {
     <div class="site-shell">
       <header class="site-header">
         <span class="wordmark">
-          encrypt this<span aria-hidden="true">✳</span>
+          <span class="brand-mark">
+            <Icon name="terminal" />
+          </span>
+          encrypt
         </span>
       </header>
       <Show
@@ -82,7 +87,12 @@ export default function App() {
         )}
       </Show>
       <footer class="site-footer">
-        Encrypted in this browser. Shared by you.
+        <span class="site-tagline">
+          Encrypted in this browser. Shared by you.
+        </span>
+        <Show when={import.meta.env.PROD}>
+          <OfflineStatus />
+        </Show>
       </footer>
     </div>
   );

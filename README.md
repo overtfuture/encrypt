@@ -1,4 +1,4 @@
-# encrypt this
+# encrypt
 
 A static SolidJS/TypeScript/Vite app for exchanging authenticated encrypted messages through shareable links or a direct WebRTC chat. Create a local profile with a compatible passkey and exchange public contact cards. Conversations are stored encrypted in this browser.
 
@@ -10,11 +10,11 @@ A static SolidJS/TypeScript/Vite app for exchanging authenticated encrypted mess
 4. Select a contact, write a message, and choose **Create link**. Copy the link and send it through your own messaging app. For longer messages, share the encrypted text or file. Outgoing messages can be shared again from the conversation.
 5. Open a received link, or use **Open link** to paste encrypted text or import a file. After passkey unlock, an authenticated message from a saved contact opens in that conversation. A link from an unknown sender waits for their contact card. Previously opened messages are available the next time you unlock this browser.
 
-To start over, select **Reset this browser** on the locked screen and confirm. This deletes the app’s local profile, contacts, messages, and waiting links. Your passkey provider and downloaded backups are managed separately.
+To start over, open **Backup, recovery & compatibility** on the locked screen, select **Reset this browser**, and confirm. This deletes the app’s local profile, contacts, messages, and waiting links. Your passkey provider and downloaded backups are managed separately.
 
 **Set an opening time** adds a cryptographic drand Quicknet timelock. Once the time passes, the recipient unlocks their profile, gets the public beacon using the link offered in the app, and pastes its JSON. Opening times are rounded up to a three-second release round. After the message is opened, its encrypted local history can be read again without the beacon.
 
-Chats and guest messages support Markdown, including headings, lists, task lists, tables, quotes, code blocks, and links. Raw HTML appears as text. Image references open as links when clicked.
+Chats and guest messages support Markdown, including headings, lists, task lists, tables, quotes, code blocks, and links. Select **Preview Markdown** while composing to see how the message will look. Select **Edit message** to return to your draft. Raw HTML appears as text. Image references open as links when clicked.
 
 The previous link/PIN workflow and automatic URL redirects were removed at the owner’s request. Old payloads are no longer supported by this version. The prior implementation remains in Git history.
 
@@ -24,7 +24,7 @@ From **Chats**, select **New guest message** to encrypt a message up to 5,000 UT
 
 Select **Include my contact** to share your public contact card, with or without a note. You can also start from **My contact → Share as guest link**. The recipient can view the card without a passkey and select **Review and add contact** to save it through the regular contact flow.
 
-For one-scan opening, select **Include unlock code with link and QR**. Anyone with that combined link or QR code can read the message. If the message is too large for a QR code, share the link.
+For one-scan opening, open **Sharing options** and select **Include unlock code with link and QR**. Anyone with that combined link or QR code can read the message. If the message is too large for a QR code, share the link.
 
 The recipient can open the link directly or select **Open guest message** to paste it or scan the QR code. The guest page opens without a profile or passkey, and guest messages stay out of chat history. The app uses a fresh random key for each guest message. A saved link and its unlock code can be used again.
 
@@ -37,6 +37,14 @@ The recipient can open the link directly or select **Open guest message** to pas
 Live chat uses a text-only WebRTC data channel with manual signaling and an empty ICE server list. It requires direct network reachability, typically on the same network. Keep both tabs open and unlocked. Each tab supports one live chat, and locking or reloading ends the connection. Use encrypted links whenever a direct connection is unavailable or the recipient is offline. Your peer’s browser participates in direct network discovery and can learn network address information.
 
 The default browser tests exercise the app flow with a test transport. On a host where browser contexts can establish a direct UDP connection, run the native smoke test with `TEST_DIRECT_WEBRTC=1 npm run test:e2e -- -g 'native WebRTC'`.
+
+## Offline use
+
+1. Open the production app while connected and wait for **Ready offline** in the footer. Reopen the same address in the same browser, or use your browser’s install or home screen option where available.
+2. When offline, unlock your profile with a passkey available on this device. You can read saved chats, create and open encrypted links or files, use guest messages and scan QR codes. Bring any links, files or unlock codes you need with you. Your passkey provider may need a connection if the passkey is only available on another device or has yet to sync.
+3. A new timed message needs the public release data for its opening time. Once you have that data, you can paste it into the app offline. Live chat needs direct reachability between the devices, such as a shared local network. Share links and files using a channel you have available.
+
+When **Update ready** appears, close all encrypt tabs and installed windows, then reopen to start using the new version. The offline cache holds the app’s files. Your profile, contacts and encrypted chats are stored separately in this browser. If the browser removes its saved site data, open the app online again to prepare offline access.
 
 ## Run and deploy
 
@@ -55,6 +63,8 @@ npm run preview
 Node 24, HTTPS in production, and a browser/provider supporting WebAuthn PRF are required. Supported localhost is suitable for development. Tests use Google Chrome and Playwright WebKit; install them with `npx playwright install chrome webkit` if needed. TypeScript checking is part of `npm run build`; this repository has no separate lint configuration.
 
 `dist/` is the complete static output. No backend/environment secrets are needed. Existing GitHub Pages CI/deployment is preserved. Set Pages source to GitHub Actions and deploy the default branch through the existing workflow.
+
+The production build generates `sw.js` and a release-specific cache of the app’s files, with integrity checks during installation. Serve `sw.js` and HTML with revalidation where the host supports it. Use the production preview to test offline behavior locally.
 
 For a project subpath:
 

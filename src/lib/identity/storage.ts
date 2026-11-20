@@ -47,7 +47,7 @@ async function database(): Promise<IDBDatabase> {
       blocked = true;
       reject(
         new Error(
-          'Close other tabs of Encrypt This, then reload to finish upgrading local storage.',
+          'Close other tabs using encrypt, then reload to finish upgrading local storage.',
         ),
       );
     };

@@ -2,10 +2,11 @@ import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
+import { offlineShell } from './scripts/offline.ts';
 
 export default defineConfig({
   base: process.env.PAGES_BASE_PATH || '/',
-  plugins: [solid(), tailwindcss()],
+  plugins: [solid(), tailwindcss(), offlineShell()],
   server: {
     watch: {
       ignored: [

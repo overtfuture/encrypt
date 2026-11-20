@@ -234,6 +234,8 @@ export default function IdentityMessages(props: {
   let channel: BroadcastChannel | undefined;
   let refreshContacts = false;
   let addContactButton: HTMLButtonElement | undefined;
+  let firstContactButton: HTMLButtonElement | undefined;
+  const emptyChats = () => view() === 'chat' && contacts().length === 0;
   const currentContact = () =>
     contacts().find((row) => row.contact.id === selected());
   const myContact = () => contactText(record()!.contact);
@@ -432,14 +434,14 @@ export default function IdentityMessages(props: {
     if (
       busy() ||
       !window.confirm(
-        'Delete all Encrypt This data in this browser? Your local profile, contacts, chat history, and waiting links will be permanently removed. Passkeys and exported backups are managed separately.',
+        'Delete all local data for encrypt? Your profile, contacts, chat history, and waiting links will be permanently removed from this browser. Passkeys and exported backups are managed separately.',
       )
     )
       return;
     run(async (active) => {
       await deleteIdentityDatabase(() => {
         if (active())
-          setError('Close other tabs using Encrypt This to finish resetting.');
+          setError('Close other tabs using encrypt to finish resetting.');
       });
       props.onResetData();
     });
@@ -771,7 +773,8 @@ export default function IdentityMessages(props: {
           contacts().filter((row) => row.contact.id !== contact.id),
         );
         setStatus('Contact deleted.');
-        if (document.activeElement === document.body) addContactButton?.focus();
+        if (document.activeElement === document.body)
+          (emptyChats() ? firstContactButton : addContactButton)?.focus();
       }
       channel?.postMessage(null);
     });
@@ -963,15 +966,19 @@ export default function IdentityMessages(props: {
         fallback={
           <section class="gate" aria-label="Profile setup and unlock">
             <div class="gate-art" aria-hidden="true">
-              <div class="gate-orbit orbit-one" />
-              <div class="gate-orbit orbit-two" />
-              <div class="gate-key">
-                <Icon name="lock" />
+              <div class="gate-diagram">
+                <div class="gate-key">
+                  <Icon name="lock" />
+                </div>
               </div>
             </div>
             <Show
               when={loaded()}
-              fallback={<p role="status">Opening local storage…</p>}
+              fallback={
+                <div class="gate-card">
+                  <p role="status">Opening local storage…</p>
+                </div>
+              }
             >
               <div class="gate-card">
                 <Show
@@ -983,7 +990,9 @@ export default function IdentityMessages(props: {
                         <>
                           <h1>Create your profile</h1>
                           <p>
-                            Use a passkey to protect your chats on this browser.
+                            A passkey lets you unlock your chats with your
+                            device or password manager. Your chats are saved in
+                            this browser.
                           </p>
                           <form
                             class="view-stack"
@@ -1014,16 +1023,16 @@ export default function IdentityMessages(props: {
                             </button>
                           </form>
                           <p class="field-help">
-                            Next, you’ll verify the same passkey before your
-                            profile is saved.
+                            Your device will ask you to create a passkey, then
+                            confirm it in a second prompt.
                           </p>
                         </>
                       }
                     >
                       <h1>Verify your passkey</h1>
                       <p>
-                        Use the same passkey or security key to finish setting
-                        up your profile.
+                        Choose the passkey you just created to finish setting up
+                        your profile.
                       </p>
                       <button
                         class="primary-button"
@@ -1074,12 +1083,17 @@ export default function IdentityMessages(props: {
                     {error()}
                   </p>
                 </Show>
-                <button
-                  class="quiet-button"
-                  onClick={() => props.onOpenGuest('')}
-                >
-                  <Icon name="scan" /> Open guest message
-                </button>
+                <div class="gate-guest">
+                  <p>
+                    Received a guest link? You can open it without a profile.
+                  </p>
+                  <button
+                    class="secondary-button"
+                    onClick={() => props.onOpenGuest('')}
+                  >
+                    <Icon name="mail" /> Open guest message
+                  </button>
+                </div>
                 <details class="gate-recovery">
                   <summary>Backup, recovery & compatibility</summary>
                   {backup()}
@@ -1088,14 +1102,14 @@ export default function IdentityMessages(props: {
                     between visits. Private browsing can clear them when the
                     session ends.
                   </p>
+                  <button
+                    class="quiet-button reset-browser-button"
+                    disabled={busy()}
+                    onClick={resetBrowser}
+                  >
+                    Reset this browser
+                  </button>
                 </details>
-                <button
-                  class="quiet-button reset-browser-button"
-                  disabled={busy()}
-                  onClick={resetBrowser}
-                >
-                  Reset this browser
-                </button>
               </div>
             </Show>
           </section>
@@ -1225,8 +1239,9 @@ export default function IdentityMessages(props: {
                       {(round) => (
                         <div class="view-stack beacon-form">
                           <p>
-                            Once the opening time passes, get the public beacon
-                            and paste its JSON here.
+                            After the opening time, open the release page in
+                            another tab. Copy all the text on that page and
+                            paste it here to unlock the message.
                           </p>
                           <a
                             class="text-button"
@@ -1265,8 +1280,10 @@ export default function IdentityMessages(props: {
             <div
               class="chat-layout"
               classList={{
-                'show-main': view() !== 'chat' || !!currentContact(),
+                'show-main':
+                  view() !== 'chat' || !!currentContact() || emptyChats(),
                 'show-tools': view() !== 'chat',
+                'empty-chats': emptyChats(),
               }}
             >
               <aside class="contact-sidebar" aria-label="Contacts">
@@ -1345,26 +1362,51 @@ export default function IdentityMessages(props: {
                       when={currentContact()?.contact.id}
                       keyed
                       fallback={
-                        <div class="workspace-empty">
-                          <div class="empty-icon">
-                            <Icon name="mail" />
-                          </div>
-                          <Show
-                            when={contacts().length}
-                            fallback={
-                              <>
-                                <h2>Add a contact to begin</h2>
-                                <p>
-                                  Exchange contact cards with someone you want
-                                  to message.
-                                </p>
-                              </>
-                            }
+                        <Show
+                          when={emptyChats()}
+                          fallback={
+                            <div class="workspace-empty">
+                              <div class="empty-icon">
+                                <Icon name="mail" />
+                              </div>
+                              <h2>Choose a conversation</h2>
+                              <p>Select a contact to read or write messages.</p>
+                            </div>
+                          }
+                        >
+                          <section
+                            class="workspace-empty start-chat"
+                            aria-labelledby="start-chat-heading"
                           >
-                            <h2>Choose a conversation</h2>
-                            <p>Select a contact to read or write messages.</p>
-                          </Show>
-                        </div>
+                            <div class="empty-icon">
+                              <Icon name="mail" />
+                            </div>
+                            <h2 id="start-chat-heading">
+                              Start a private chat
+                            </h2>
+                            <p>
+                              Add someone using their contact link or QR code.
+                              You can share yours from{' '}
+                              <strong>My contact</strong>.
+                            </p>
+                            <button
+                              class="primary-button"
+                              onClick={addContact}
+                              ref={firstContactButton}
+                            >
+                              Add contact
+                            </button>
+                            <div class="start-chat-guest">
+                              <p>Messaging someone who doesn’t use encrypt?</p>
+                              <button
+                                class="secondary-button"
+                                onClick={() => setView('guest')}
+                              >
+                                New guest message
+                              </button>
+                            </div>
+                          </section>
+                        </Show>
                       }
                     >
                       {(id) => (
@@ -1465,6 +1507,10 @@ export default function IdentityMessages(props: {
                         </Match>
                         <Match when={view() === 'contact'}>
                           <div class="view-stack">
+                            <p>
+                              Ask the person for their contact link or QR code.
+                              You’ll review their name before saving it.
+                            </p>
                             <label for="contact-import">
                               Contact to import
                             </label>
@@ -1526,8 +1572,8 @@ export default function IdentityMessages(props: {
                         <Match when={view() === 'share'}>
                           <div class="view-stack">
                             <p>
-                              Send your public link so someone can add you and
-                              encrypt messages for your profile.
+                              Share this link so someone can add you and send
+                              you private messages.
                             </p>
                             <label for="my-contact-link">My contact link</label>
                             <input
@@ -1601,6 +1647,10 @@ export default function IdentityMessages(props: {
                               run(async () => submitMessage(messageInput()));
                             }}
                           >
+                            <p>
+                              Paste the link someone sent you, or open their
+                              encrypted message file below.
+                            </p>
                             <label for="message-input">
                               Encrypted message to open
                             </label>
@@ -1651,9 +1701,10 @@ export default function IdentityMessages(props: {
                               </p>
                               <Show when={!contact().verified}>
                                 <p>
-                                  Compare the full fingerprint with this person
-                                  through a trusted channel before marking it
-                                  verified.
+                                  A fingerprint is a code that identifies this
+                                  contact. Ask the person to read theirs over a
+                                  call or in person. Mark them verified if every
+                                  character matches.
                                 </p>
                                 <button
                                   class="primary-button"

@@ -4,7 +4,7 @@ const baseURL = `http://localhost:4173${process.env.PAGES_BASE_PATH || '/'}`;
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['identity.spec.ts'],
+  testMatch: ['identity.spec.ts', 'offline.spec.ts'],
   outputDir: './test-results-production',
   fullyParallel: true,
   use: {

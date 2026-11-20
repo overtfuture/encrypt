@@ -1,4 +1,4 @@
-encrypt this runtime dependency notices
+encrypt runtime dependency notices
 
 tlock-js@0.9.0
 MIT License

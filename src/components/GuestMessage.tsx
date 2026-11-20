@@ -13,6 +13,7 @@ import { renderMessage } from '../lib/message-content';
 import { Avatar, contactName } from './Conversation';
 import { Icon } from './Icon';
 import type { Action } from './ProfileBackup';
+import MarkdownEditor from './MarkdownEditor';
 import ScanInput from './ScanInput';
 
 const qrOptions = {
@@ -129,8 +130,8 @@ export function GuestMessageComposer(props: {
           }}
         >
           <p>
-            Share an encrypted message or your public contact with someone who
-            doesn’t have a profile.
+            Share a private note or your contact card with someone who doesn’t
+            use encrypt. You’ll get a link and a separate unlock code.
           </p>
           <label class="guest-share-option">
             <input
@@ -142,20 +143,21 @@ export function GuestMessageComposer(props: {
             />
             Include my contact
           </label>
-          <label for="guest-compose">
-            Message for guest
-            <Show when={includeContact()}>
-              {' '}
-              <span class="optional">Optional</span>
-            </Show>
-          </label>
-          <textarea
+          <MarkdownEditor
             id="guest-compose"
-            rows="5"
-            maxlength={GUEST_MESSAGE_LIMIT}
-            autocomplete="off"
+            label={
+              <>
+                Message for guest
+                <Show when={includeContact()}>
+                  {' '}
+                  <span class="optional">Optional</span>
+                </Show>
+              </>
+            }
+            rows={5}
+            maxLength={GUEST_MESSAGE_LIMIT}
             value={message()}
-            onInput={(event) => setMessage(event.currentTarget.value)}
+            onInput={setMessage}
           />
           <button
             class="primary-button"
@@ -172,24 +174,47 @@ export function GuestMessageComposer(props: {
     >
       {(result) => (
         <div class="view-stack guest-share">
-          <label class="guest-share-option">
-            <input
-              type="checkbox"
-              checked={includeCode()}
-              onChange={(event) => {
-                setIncludeCode(event.currentTarget.checked);
-                setShowCodeQr(false);
-              }}
-            />
-            Include unlock code with link and QR
-          </label>
+          <Show when={!includeCode()}>
+            <p>
+              Send the link and the unlock code separately. The recipient needs
+              both to open the message.
+            </p>
+          </Show>
+          <details class="share-options">
+            <summary>Sharing options</summary>
+            <label class="guest-share-option">
+              <input
+                type="checkbox"
+                checked={includeCode()}
+                onChange={(event) => {
+                  setIncludeCode(event.currentTarget.checked);
+                  setShowCodeQr(false);
+                }}
+              />
+              Include unlock code with link and QR
+            </label>
+            <Show when={!includeCode()}>
+              <p class="field-help">
+                Opens in one step. Anyone who gets the combined link or QR code
+                can read the message.
+              </p>
+            </Show>
+          </details>
           <section
             class="view-stack guest-share-section"
             aria-labelledby="guest-share-message-heading"
           >
             <h3 id="guest-share-message-heading">Guest message</h3>
-            <Show when={includeCode()}>
-              <p class="field-help">
+            <Show
+              when={includeCode()}
+              fallback={
+                <p>
+                  Send this link in your usual messaging app, or let the
+                  recipient scan the QR code.
+                </p>
+              }
+            >
+              <p class="share-warning">
                 Anyone with this link or QR code can open the message.
               </p>
             </Show>
@@ -216,8 +241,9 @@ export function GuestMessageComposer(props: {
               aria-labelledby="guest-share-unlock-heading"
             >
               <h3 id="guest-share-unlock-heading">Separate unlock code</h3>
-              <p class="field-help">
-                Share this code separately from the guest message link or QR.
+              <p>
+                If you can, send the code in another app or tell the recipient
+                over a call.
               </p>
               <label for="guest-share-code">Guest unlock code</label>
               <input
@@ -280,6 +306,7 @@ export function GuestMessageOpener(props: {
     createSignal<Awaited<ReturnType<typeof openGuestMessage>>>();
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal('');
+  let linkField: HTMLTextAreaElement | undefined;
   let mounted = true;
   onCleanup(() => {
     mounted = false;
@@ -318,8 +345,18 @@ export function GuestMessageOpener(props: {
       setEnvelope(envelope);
       if (code) void unlock(envelope, code);
     } catch {
-      setError('This guest message link is invalid or incomplete.');
+      setError(
+        'This guest message link is invalid or incomplete. Ask the sender for the full link.',
+      );
     }
+  }
+
+  function useDifferentLink() {
+    setEnvelope(undefined);
+    setCode('');
+    setCodeScanned(false);
+    setError('');
+    queueMicrotask(() => linkField?.focus());
   }
 
   function scanCode(value: string) {
@@ -351,6 +388,11 @@ export function GuestMessageOpener(props: {
               ? 'Guest contact'
               : 'Guest message'}
           </h1>
+          <Show when={error()}>
+            <p class="error-message" role="alert">
+              {error()}
+            </p>
+          </Show>
           <Show
             when={contents()}
             fallback={
@@ -373,6 +415,7 @@ export function GuestMessageOpener(props: {
                       </label>
                       <textarea
                         id="guest-open-link"
+                        ref={linkField}
                         rows="3"
                         maxlength="92000"
                         autocomplete="off"
@@ -430,6 +473,13 @@ export function GuestMessageOpener(props: {
                         Unlock message
                       </button>
                       <ScanInput unlockCode onRead={scanCode} />
+                      <button
+                        class="quiet-button"
+                        type="button"
+                        onClick={useDifferentLink}
+                      >
+                        Use a different guest link
+                      </button>
                     </form>
                   )}
                 </Show>
@@ -470,11 +520,6 @@ export function GuestMessageOpener(props: {
                 </Show>
               </>
             )}
-          </Show>
-          <Show when={error()}>
-            <p class="error-message" role="alert">
-              {error()}
-            </p>
           </Show>
           <button class="quiet-button" onClick={props.close}>
             Close guest message

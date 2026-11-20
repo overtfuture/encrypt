@@ -1,10 +1,18 @@
-import { For, Show, createEffect, createSignal, onCleanup } from 'solid-js';
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from 'solid-js';
 import { link } from '../lib/identity/encoding';
 import { openHistory, type ChatMessage } from '../lib/identity/history';
 import { readHistory, type SavedContact } from '../lib/identity/storage';
 import { renderMessage } from '../lib/message-content';
 import { timeForRound } from '../lib/timelock';
 import { Icon } from './Icon';
+import MarkdownEditor from './MarkdownEditor';
 import { downloadText } from './ProfileBackup';
 
 export type Draft = { body: string; timed: boolean; opening: string };
@@ -70,7 +78,9 @@ export default function Conversation(props: {
   const [problem, setProblem] = createSignal('');
   const [retry, setRetry] = createSignal(0);
   const [share, setShare] = createSignal<string>();
-  const sendingLive = () => props.liveConnected && !props.draft.timed;
+  const sendingLive = createMemo(
+    () => props.liveConnected && !props.draft.timed,
+  );
   let scroll: HTMLDivElement | undefined;
   let previousLimit = PAGE_SIZE;
   let initial = true;
@@ -245,6 +255,11 @@ export default function Conversation(props: {
                             </p>
                           }
                         >
+                          <p>
+                            Copy this link, then paste it into a message to{' '}
+                            {contactName(props.contact.contact)} in your usual
+                            messaging app.
+                          </p>
                           <label>
                             <span>Encrypted link</span>
                             <input
@@ -307,20 +322,49 @@ export default function Conversation(props: {
           props.onCreate(sendingLive());
         }}
       >
-        <label class="sr-only" for="private-message">
-          Private message
-        </label>
+        <MarkdownEditor
+          id="private-message"
+          label="Private message"
+          rows={2}
+          maxLength={16000}
+          value={props.draft.body}
+          onInput={(body) => props.onDraft({ body })}
+          placeholder="Write a private message…"
+        />
         <div class="composer-fields">
-          <textarea
-            id="private-message"
-            rows="2"
-            maxlength="16000"
-            value={props.draft.body}
-            onInput={(event) =>
-              props.onDraft({ body: event.currentTarget.value })
-            }
-            placeholder="Write a private message…"
-          />
+          <div class="composer-options">
+            <label class="timed-option">
+              <input
+                type="checkbox"
+                checked={props.draft.timed}
+                onChange={(event) =>
+                  props.onDraft({ timed: event.currentTarget.checked })
+                }
+              />{' '}
+              Set an opening time
+            </label>
+            <Show when={props.draft.timed}>
+              <label for="opening-time">Opening date and time</label>
+              <input
+                id="opening-time"
+                type="datetime-local"
+                value={props.draft.opening}
+                onInput={(event) =>
+                  props.onDraft({ opening: event.currentTarget.value })
+                }
+              />
+            </Show>
+            <Show when={sendingLive()}>
+              <button
+                class="quiet-button link-instead"
+                type="button"
+                disabled={props.busy || !props.draft.body.trim()}
+                onClick={() => props.onCreate(false)}
+              >
+                Create link instead
+              </button>
+            </Show>
+          </div>
           <button
             class="primary-button"
             type="submit"
@@ -337,39 +381,6 @@ export default function Conversation(props: {
               <Icon name="arrow" /> Send live
             </Show>
           </button>
-        </div>
-        <div class="composer-options">
-          <Show when={sendingLive()}>
-            <button
-              class="quiet-button link-instead"
-              type="button"
-              disabled={props.busy || !props.draft.body.trim()}
-              onClick={() => props.onCreate(false)}
-            >
-              Create link instead
-            </button>
-          </Show>
-          <label class="timed-option">
-            <input
-              type="checkbox"
-              checked={props.draft.timed}
-              onChange={(event) =>
-                props.onDraft({ timed: event.currentTarget.checked })
-              }
-            />{' '}
-            Set an opening time
-          </label>
-          <Show when={props.draft.timed}>
-            <label for="opening-time">Opening date and time</label>
-            <input
-              id="opening-time"
-              type="datetime-local"
-              value={props.draft.opening}
-              onInput={(event) =>
-                props.onDraft({ opening: event.currentTarget.value })
-              }
-            />
-          </Show>
         </div>
       </form>
     </section>

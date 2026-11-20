@@ -94,6 +94,27 @@ test('the profile gate hides contacts and message import until passkey unlock', 
   );
 });
 
+test('first-time users get a clear choice between starting a chat and sharing with a guest', async ({
+  page,
+}) => {
+  await mockPasskeys(page, 33);
+  await page.goto('./');
+  await expect(page.getByText(/A passkey lets you unlock/)).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Reset this browser' }),
+  ).toBeHidden();
+  await finishProfileSetup(page);
+  const start = page.getByRole('region', { name: 'Start a private chat' });
+  await expect(
+    start.getByRole('button', { name: 'Add contact' }),
+  ).toBeVisible();
+  await start.getByRole('button', { name: 'New guest message' }).click();
+  await expect(page.getByLabel('Message for guest')).toBeVisible();
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await start.getByRole('button', { name: 'Add contact' }).click();
+  await expect(page.getByLabel('Contact to import')).toBeVisible();
+});
+
 test('enrollment uses the same PRF assertion path as unlock after reload', async ({
   page,
 }) => {
@@ -459,6 +480,34 @@ test('sent and received messages render Markdown in the conversation', async ({
   ).toHaveText('Received quote');
 });
 
+test('private Markdown preview preserves the draft and resets after creating a link', async ({
+  page,
+}) => {
+  await mockPasskeys(page, 31);
+  await page.goto('./');
+  await expect(page).toHaveTitle('encrypt');
+  await createProfile(page, 'Local sender');
+  const contact = await generateIdentity('Saved contact');
+  await addCard(page, contactText(contact.contact));
+
+  const draft = '**Private draft**';
+  await page.getByLabel('Private message').fill(draft);
+  await page.getByRole('button', { name: 'Preview Markdown' }).click();
+  const preview = page.getByRole('region', { name: 'Markdown preview' });
+  await expect(preview.locator('strong')).toHaveText('Private draft');
+  await expect(page.getByTestId('outgoing-message')).toHaveCount(0);
+  expect(await localRecords(page)).not.toContain('Private draft');
+  await page.getByRole('button', { name: 'Edit message' }).click();
+  await expect(page.getByLabel('Private message')).toHaveValue(draft);
+  await page.getByRole('button', { name: 'Preview Markdown' }).click();
+  await page.getByRole('button', { name: 'Create link', exact: true }).click();
+  await expect(
+    page.getByTestId('outgoing-message').locator('strong'),
+  ).toHaveText('Private draft');
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByLabel('Private message')).toBeEmpty();
+});
+
 test('resetting from the locked screen clears app data in open tabs', async ({
   page,
   context,
@@ -499,6 +548,9 @@ test('resetting from the locked screen clears app data in open tabs', async ({
     page.getByText('A link is waiting for you after unlock.'),
   ).toBeVisible();
 
+  await page
+    .getByText('Backup, recovery & compatibility', { exact: true })
+    .click();
   const reset = page.getByRole('button', { name: 'Reset this browser' });
   await expect(reset).toBeVisible();
   page.once('dialog', (dialog) => dialog.dismiss());
@@ -531,8 +583,11 @@ test('resetting from the locked screen clears app data in open tabs', async ({
   );
   await createProfile(page, 'Fresh profile');
   await expect(
-    page.getByText('Saved contacts will appear here.'),
+    page.getByRole('region', { name: 'Start a private chat' }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /^Saved contact/ }),
+  ).toHaveCount(0);
 });
 
 test('a reset waits for a tab holding the database to close', async ({
@@ -560,6 +615,9 @@ test('a reset waits for a tab holding the database to close', async ({
       }),
   );
 
+  await page
+    .getByText('Backup, recovery & compatibility', { exact: true })
+    .click();
   const reset = page.getByRole('button', { name: 'Reset this browser' });
   await expect(reset).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
@@ -585,6 +643,34 @@ async function createGuestMessage(page: Page, message: string) {
   await page.getByRole('button', { name: 'Encrypt guest message' }).click();
 }
 
+test('guest Markdown preview uses the same formatting and safe image links as opened messages', async ({
+  page,
+}) => {
+  await mockPasskeys(page, 32);
+  await page.goto('./');
+  await createProfile(page, 'Guest sender');
+  await page.getByRole('button', { name: 'New guest message' }).click();
+  const draft =
+    '# Guest note\n\n![Picture](https://example.com/picture.png)\n\n<b>Raw HTML</b>';
+  await page.getByLabel('Message for guest').fill(draft);
+  await page.getByRole('button', { name: 'Preview Markdown' }).click();
+  const preview = page.getByRole('region', { name: 'Markdown preview' });
+  await expect(
+    preview.getByRole('heading', { name: 'Guest note' }),
+  ).toBeVisible();
+  await expect(
+    preview.getByRole('link', { name: 'Image: Picture' }),
+  ).toBeVisible();
+  await expect(preview.locator('img, b')).toHaveCount(0);
+  await expect(preview).toContainText('<b>Raw HTML</b>');
+  await page.getByRole('button', { name: 'Edit message' }).click();
+  await expect(page.getByLabel('Message for guest')).toHaveValue(draft);
+  await page.getByRole('button', { name: 'Preview Markdown' }).click();
+  await page.getByRole('button', { name: 'Encrypt guest message' }).click();
+  await expect(preview).toHaveCount(0);
+  await expect(page.getByLabel('Guest message link')).toBeVisible();
+});
+
 test('a guest can open a shared contact card and review it before saving', async ({
   page,
   browser,
@@ -609,6 +695,7 @@ test('a guest can open a shared contact card and review it before saving', async
   const code = await page.getByLabel('Guest unlock code').inputValue();
   expect(detached).not.toContain(code);
   expect(detached).not.toContain(new URL(publicLink).hash.slice(1));
+  await page.getByText('Sharing options', { exact: true }).click();
   await page.getByLabel('Include unlock code with link and QR').check();
   const bundled = await page.getByLabel('Guest message link').inputValue();
 
@@ -719,6 +806,15 @@ test('a guest can open an encrypted link with a separately shared code', async (
     await input.fill('A'.repeat(22));
     await guest.getByRole('button', { name: 'Unlock message' }).click();
     await expect(guest.getByRole('alert')).toContainText('couldn’t open');
+    await guest
+      .getByRole('button', { name: 'Use a different guest link' })
+      .click();
+    const linkField = guest.getByLabel('Paste a guest message link');
+    await expect(linkField).toBeFocused();
+    await expect(guest.getByRole('alert')).toHaveCount(0);
+    await linkField.fill(link);
+    await guest.getByRole('button', { name: 'Open link', exact: true }).click();
+    await expect(input).toBeEmpty();
     await upload.setInputFiles({
       name: 'unlock-code.png',
       mimeType: 'image/png',
@@ -747,6 +843,8 @@ test('a QR code with the unlock code opens a guest message in one scan', async (
   await createGuestMessage(page, `## ${message}`);
   const code = await page.getByLabel('Guest unlock code').inputValue();
   const includeCode = page.getByLabel('Include unlock code with link and QR');
+  await expect(includeCode).toBeHidden();
+  await page.getByText('Sharing options', { exact: true }).click();
   await expect(includeCode).not.toBeChecked();
   await page.getByLabel('Show unlock code QR').check();
   await expect(

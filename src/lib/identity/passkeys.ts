@@ -67,7 +67,7 @@ export async function registerPasskey(
       signal,
       publicKey: {
         challenge: random(32),
-        rp: { id: rp, name: 'Encrypt this' },
+        rp: { id: rp, name: 'encrypt' },
         user: {
           id: random(32),
           name: name || 'Local identity',
