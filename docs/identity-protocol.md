@@ -8,7 +8,7 @@
 - `identity/vault.ts`: encrypted private bundle, passkey/recovery wrapping and verified rewrap.
 - `identity/storage.ts`: IndexedDB atomic writes, pinned contacts, pending links, and history queries.
 - `identity/history.ts`: dedicated history key derivation, authenticated encryption for local transcripts, and payload validation.
-- `identity/live-chat.ts`: manually exchanged encrypted signaling, a direct WebRTC data channel, and connection lifecycle.
+- `identity/live-chat.ts` and `identity/live-files.ts`: manually exchanged encrypted signaling, direct WebRTC data channels, attachment encryption, and connection lifecycle.
 - `IdentityMessages.tsx`: passkey gate, manual import/export, and session lifecycle.
 - `timelock.ts`: pinned drand Quicknet parameters, local encryption and explicitly imported, verified beacons.
 
@@ -39,6 +39,8 @@ HPKE info and AAD are identical UTF-8 JSON arrays in this exact order:
 Auth mode is selected by always supplying the local messaging private key as senderKey and the separately pinned contact public key as senderPublicKey. No sender public key from the message is trusted. Sender authentication is subject to RFC 9180’s key-compromise impersonation limits: a compromised recipient key defeats the corresponding assurances. It is not a signature for third-party nonrepudiation.
 
 Live invites and replies use the same envelope framing with a null opening round and a separate `encrypt-this/live-signal` HPKE context. Their encrypted JSON includes a random session ID, expiration, role, and data-only SDP with gathered ICE candidates and DTLS fingerprint. A reply must match the exact open invite. A live data channel carries ordinary untimed authenticated message envelopes so archive deduplication applies across both transports. The peer connection uses no configured ICE servers and the application exchanges no SDP over HTTP. The browser verifies the DTLS fingerprint from the authenticated SDP.
+
+Attachments use a separate ordered data channel. A fresh authenticated HPKE envelope encrypts the filename and bytes and binds the sender, recipient, live session, and random transfer ID. The channel carries the encapsulation and ciphertext in bounded chunks with backpressure. The recipient acknowledges after authenticating and opening the complete file. Both peers must advertise attachment support on the file channel. Decrypted files stay in bounded memory in the unlocked tab. An explicit download saves a copy outside the app.
 
 A timed message encrypts the complete em1 string with the established tlock construction for round `t`. et1 carries only version, round and ASCII-armored tlock ciphertext (max 62,000 characters). Parsing pins the Quicknet chain and single tlock recipient, bounds the armored data, and verifies the imported beacon signature. After opening, inner and outer rounds must match; the inner round is also bound by HPKE authentication. This is composition of existing HPKE and tlock implementations, not a custom public-key primitive. The outer date is untrusted until inner authentication succeeds. Possession of a public beacon reveals only the HPKE envelope, not its plaintext.
 

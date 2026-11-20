@@ -2,8 +2,8 @@ import type { Page } from '@playwright/test';
 
 type Frame =
   | { type: 'open'; label: string }
-  | { type: 'message'; payload: string }
-  | { type: 'close' };
+  | { type: 'message'; label: string; payload: string | number[] }
+  | { type: 'close'; label: string };
 
 declare global {
   interface Window {
@@ -26,9 +26,17 @@ export async function linkTestTransports(first: Page, second: Page) {
       ),
     );
     await local.addInitScript(() => {
+      let deliveries = Promise.resolve();
+      function emit(frame: Frame) {
+        const sent = deliveries.then(() => window.emitLiveTestFrame(frame));
+        deliveries = sent.catch(() => {});
+        return sent;
+      }
+
       class TestChannel extends EventTarget {
         readyState: RTCDataChannelState = 'connecting';
         bufferedAmount = 0;
+        bufferedAmountLowThreshold = 0;
         constructor(readonly label: string) {
           super();
         }
@@ -44,12 +52,26 @@ export async function linkTestTransports(first: Page, second: Page) {
         close() {
           const wasOpen = this.readyState === 'open';
           this.finish();
-          if (wasOpen) void window.emitLiveTestFrame({ type: 'close' });
+          if (wasOpen) void emit({ type: 'close', label: this.label });
         }
-        send(payload: string) {
+        send(data: string | Uint8Array) {
           if (this.readyState !== 'open')
             throw new Error('The test channel is closed.');
-          void window.emitLiveTestFrame({ type: 'message', payload });
+          const payload = typeof data === 'string' ? data : Array.from(data);
+          this.bufferedAmount += payload.length;
+          const drained = () => {
+            const before = this.bufferedAmount;
+            this.bufferedAmount -= payload.length;
+            if (
+              before > this.bufferedAmountLowThreshold &&
+              this.bufferedAmount <= this.bufferedAmountLowThreshold
+            )
+              this.dispatchEvent(new Event('bufferedamountlow'));
+          };
+          void emit({ type: 'message', label: this.label, payload }).then(
+            drained,
+            drained,
+          );
         }
       }
 
@@ -57,7 +79,7 @@ export async function linkTestTransports(first: Page, second: Page) {
         iceGatheringState: RTCIceGatheringState = 'complete';
         connectionState: RTCPeerConnectionState = 'new';
         localDescription?: RTCSessionDescriptionInit;
-        channel?: TestChannel;
+        channels = new Map<string, TestChannel>();
 
         constructor(config: RTCConfiguration) {
           super();
@@ -66,32 +88,39 @@ export async function linkTestTransports(first: Page, second: Page) {
           window.receiveLiveTestFrame = (frame) => {
             if (this.connectionState === 'closed') return;
             if (frame.type === 'open') {
-              this.channel = new TestChannel(frame.label);
+              const channel = this.createDataChannel(frame.label);
               this.dispatchEvent(
                 Object.assign(new Event('datachannel'), {
-                  channel: this.channel,
+                  channel,
                 }),
               );
               this.connected();
+              channel.open();
             } else if (frame.type === 'message') {
-              this.channel?.dispatchEvent(
-                new MessageEvent('message', { data: frame.payload }),
+              this.channels.get(frame.label)?.dispatchEvent(
+                new MessageEvent('message', {
+                  data:
+                    typeof frame.payload === 'string'
+                      ? frame.payload
+                      : new Uint8Array(frame.payload).buffer,
+                }),
               );
             } else {
-              this.channel?.finish();
+              this.channels.get(frame.label)?.finish();
             }
           };
         }
 
         private connected() {
+          if (this.connectionState === 'connected') return;
           this.connectionState = 'connected';
           this.dispatchEvent(new Event('connectionstatechange'));
-          this.channel?.open();
         }
 
         createDataChannel(label: string) {
-          this.channel = new TestChannel(label);
-          return this.channel;
+          const channel = new TestChannel(label);
+          this.channels.set(label, channel);
+          return channel;
         }
 
         createOffer() {
@@ -110,12 +139,13 @@ export async function linkTestTransports(first: Page, second: Page) {
         }
 
         async setRemoteDescription(description: RTCSessionDescriptionInit) {
-          if (description.type !== 'answer' || !this.channel) return;
+          if (description.type !== 'answer') return;
           this.connected();
-          await window.emitLiveTestFrame({
-            type: 'open',
-            label: this.channel.label,
-          });
+          for (const channel of this.channels.values()) {
+            if (this.connectionState === 'closed') return;
+            await emit({ type: 'open', label: channel.label });
+            channel.open();
+          }
         }
 
         close() {

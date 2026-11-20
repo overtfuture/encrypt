@@ -1,5 +1,7 @@
 import { linkTestTransports } from './live-transport';
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import QRCode from 'qrcode';
 import {
   backupText,
   createVault,
@@ -1467,7 +1469,7 @@ for (const native of [false, true]) {
         const externalRequests: string[] = [];
         for (const page of [alice, bob])
           page.on('request', (request) => {
-            if (!request.url().startsWith(new URL(baseURL!).origin))
+            if (new URL(request.url()).origin !== new URL(baseURL!).origin)
               externalRequests.push(request.url());
           });
         for (const [page, seed, name] of [
@@ -1482,6 +1484,7 @@ for (const native of [false, true]) {
         const bobCard = await shareCard(bob);
         await addCard(alice, bobCard);
         await addCard(bob, aliceCard);
+        await expect(alice.getByLabel('Attach file or photo')).toHaveCount(0);
 
         const button = (page: Page, name: string) =>
           page.getByRole('button', { name, exact: true });
@@ -1523,6 +1526,42 @@ for (const native of [false, true]) {
         await expect(alice.getByTestId('identity-plaintext')).toHaveText(
           'Live from Bob',
         );
+        const attachment = Buffer.alloc(96_000, 0x41);
+        const attach = alice.getByLabel('Attach file or photo');
+        await expect(attach).toHaveCount(1);
+        await attach.setInputFiles({
+          name: 'live-notes.txt',
+          mimeType: 'text/plain',
+          buffer: attachment,
+        });
+        const download = bob.getByRole('button', {
+          name: 'Download live-notes.txt',
+        });
+        await expect(download).toBeVisible();
+        const savedFile = bob.waitForEvent('download');
+        await download.click();
+        const downloaded = await savedFile;
+        expect(downloaded.suggestedFilename()).toBe('live-notes.txt');
+        expect(await readFile(await downloaded.path())).toEqual(attachment);
+        expect(await localRecords(bob)).not.toContain('live-notes.txt');
+        await expect(bob.getByLabel('Encrypted link')).toHaveCount(0);
+        const photo = await QRCode.toBuffer('live PNG preview');
+        await bob.getByLabel('Attach file or photo').setInputFiles({
+          name: 'live-photo.png',
+          mimeType: 'image/png',
+          buffer: photo,
+        });
+        await button(alice, 'Preview photo').click();
+        await expect(
+          alice.getByRole('img', { name: 'live-photo.png' }),
+        ).toBeVisible();
+        await expect
+          .poll(() =>
+            alice
+              .getByRole('img', { name: 'live-photo.png' })
+              .evaluate((image: HTMLImageElement) => image.naturalWidth),
+          )
+          .toBeGreaterThan(0);
         expect(await localRecords(alice)).not.toContain('Live from Bob');
         await alice.evaluate(() => {
           const descriptor = Object.getOwnPropertyDescriptor(
@@ -1574,6 +1613,9 @@ for (const native of [false, true]) {
         );
         await unlock(bob);
         await openStoredContact(bob, 'Alice');
+        await expect(
+          bob.getByRole('button', { name: 'Download live-notes.txt' }),
+        ).toHaveCount(0);
         await button(bob, 'Live chat').click();
         await bob.getByLabel('Paste invite code').fill(offer);
         await button(bob, 'Join live chat').click();
@@ -1581,6 +1623,9 @@ for (const native of [false, true]) {
         await alice.reload();
         await unlock(alice);
         await openStoredContact(alice, 'Bob');
+        await expect(
+          alice.getByRole('button', { name: 'Download live-notes.txt' }),
+        ).toHaveCount(0);
         await expect(alice.getByTestId('identity-plaintext')).toHaveText(
           incoming,
         );

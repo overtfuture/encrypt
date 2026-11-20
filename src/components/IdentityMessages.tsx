@@ -33,6 +33,8 @@ import {
   validateMessagePayload,
 } from '../lib/identity/history';
 import { createLiveChat, type LiveState } from '../lib/identity/live-chat';
+import type { LiveFile } from '../lib/identity/live-files';
+import type { Attachment } from './LiveAttachment';
 import {
   createPasskey,
   registerPasskey,
@@ -208,6 +210,8 @@ export default function IdentityMessages(props: {
   const [inboxReady, setInboxReady] = createSignal(false);
   const [staged, setStaged] = createSignal<string[]>([]);
   const [liveState, setLiveState] = createSignal<LiveState>();
+  const [attachments, setAttachments] = createSignal<Attachment[]>([]);
+  const [fileSending, setFileSending] = createSignal(false);
   const liveChat = createLiveChat({
     sessionToken: () => epoch,
     state: (next) => {
@@ -226,6 +230,7 @@ export default function IdentityMessages(props: {
     status: setStatus,
     issue: setError,
     receive: receiveLive,
+    receiveFile: (contact, file) => rememberFile(contact.id, file, 'incoming'),
   });
 
   let epoch = 0;
@@ -257,6 +262,9 @@ export default function IdentityMessages(props: {
     setContacts([]);
     setSelected('');
     setDrafts({});
+    for (const attachment of attachments()) attachment.file.bytes.fill(0);
+    setAttachments([]);
+    setFileSending(false);
     setNewestOutgoing(undefined);
     setView('chat');
     setSource('');
@@ -792,6 +800,13 @@ export default function IdentityMessages(props: {
     run(async (active) => {
       await clearHistory(owner, contact.id);
       if (active()) {
+        setAttachments((current) =>
+          current.filter((attachment) => {
+            if (attachment.contact !== contact.id) return true;
+            attachment.file.bytes.fill(0);
+            return false;
+          }),
+        );
         if (newestOutgoing()?.contact === contact.id)
           setNewestOutgoing(undefined);
         setStatus('Messages cleared.');
@@ -851,6 +866,51 @@ export default function IdentityMessages(props: {
     });
     if (!active()) return;
     if (await saveMessage(row)) notifyChange();
+  }
+
+  function rememberFile(
+    contact: string,
+    file: LiveFile,
+    direction: Attachment['direction'],
+  ) {
+    const next = [
+      ...attachments(),
+      { contact, file, direction, savedAt: Date.now() },
+    ];
+    let remaining = 30_000_000;
+    let first = next.length;
+    while (
+      first > 0 &&
+      next.length - first < 20 &&
+      remaining >= next[first - 1].file.bytes.length
+    ) {
+      remaining -= next[--first].file.bytes.length;
+    }
+    for (const expired of next.slice(0, first)) expired.file.bytes.fill(0);
+    setAttachments(next.slice(first));
+  }
+
+  async function sendFile(source: File) {
+    if (!session() || fileSending()) return;
+    const contact = selected();
+    const startedAt = epoch;
+    setFileSending(true);
+    setError('');
+    setStatus('Encrypting and sending attachment…');
+    try {
+      const file = await liveChat.sendFile(contact, source);
+      if (epoch === startedAt) {
+        rememberFile(contact, file, 'outgoing');
+        setStatus('Attachment received by your contact.');
+      } else file.bytes.fill(0);
+    } catch (cause) {
+      if (epoch === startedAt) {
+        setStatus('');
+        setError(errorMessage(cause));
+      }
+    } finally {
+      if (epoch === startedAt) setFileSending(false);
+    }
   }
 
   function compose(sendLive: boolean) {
@@ -1437,6 +1497,15 @@ export default function IdentityMessages(props: {
                             liveState()?.contact === id &&
                             liveState()?.phase === 'connected'
                           }
+                          canAttach={
+                            liveState()?.contact === id &&
+                            liveState()?.filesReady === true
+                          }
+                          attachments={attachments().filter(
+                            (attachment) => attachment.contact === id,
+                          )}
+                          fileSending={fileSending()}
+                          onAttach={sendFile}
                           onCopy={copy}
                         />
                       )}

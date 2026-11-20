@@ -34,7 +34,9 @@ The recipient can open the link directly or select **Open guest message** to pas
 2. One person chooses **Create invite** and sends the encrypted code through a channel they already use. The other person pastes it into **Join live chat** and sends the reply code back.
 3. The person who created the invite pastes the reply into the original tab and chooses **Connect**. Once connected, the setup panel closes and both people can use **Send live** in the conversation.
 
-Live chat uses a text-only WebRTC data channel with manual signaling and an empty ICE server list. It requires direct network reachability, typically on the same network. Keep both tabs open and unlocked. Each tab supports one live chat, and locking or reloading ends the connection. Use encrypted links whenever a direct connection is unavailable or the recipient is offline. Your peer’s browser participates in direct network discovery and can learn network address information.
+When both browsers support live attachments, select **Attach file or photo** in a connected chat. You can send one file at a time, up to 10 MB. The recipient can preview JPEG, PNG, and WebP photos or download any attachment. Download files you want to keep. The unlocked tab holds up to 20 recent attachments totaling 30 MB in memory, and locking or reloading clears them.
+
+Live chat uses WebRTC data channels with manual signaling and an empty ICE server list. It requires direct network reachability, typically on the same network. Keep both tabs open and unlocked. Each tab supports one live chat, and locking or reloading ends the connection. Attachments are encrypted for the selected contact and delivered over the direct connection. Text can also be shared through encrypted links when a direct connection is unavailable. Your peer’s browser participates in direct network discovery and can learn network address information.
 
 The default browser tests exercise the app flow with a test transport. On a host where browser contexts can establish a direct UDP connection, run the native smoke test with `TEST_DIRECT_WEBRTC=1 npm run test:e2e -- -g 'native WebRTC'`.
 
