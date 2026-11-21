@@ -1,4 +1,5 @@
 import { decode, encode, fields, random, utf8 } from './encoding';
+import { bindLiveFiles, FILE_CHANNEL, type LiveFile } from './live-files';
 import {
   openLiveSignal,
   sealLiveSignal,
@@ -33,6 +34,7 @@ export type LiveState = {
     | 'connected'
     | 'reconnecting';
   code?: string;
+  filesReady: boolean;
 };
 
 type Connection = {
@@ -42,6 +44,8 @@ type Connection = {
   expires: number;
   cancel: AbortController;
   channel?: RTCDataChannel;
+  files?: ReturnType<typeof bindLiveFiles>;
+  filesReady: boolean;
   timer?: ReturnType<typeof setTimeout>;
   phase: LiveState['phase'];
   sessionToken: number;
@@ -53,7 +57,7 @@ type Connection = {
 function requireDataSdp(sdp: string) {
   const media = sdp.split(/\r?\n/).filter((line) => line.startsWith('m='));
   if (media.length !== 1 || !media[0].startsWith('m=application '))
-    throw new Error('The code must describe a text-only live chat.');
+    throw new Error('The code must describe a live chat data connection.');
 }
 
 function checkExpiry(expires: number) {
@@ -124,6 +128,7 @@ export function createLiveChat(options: {
   state: (value: LiveState | undefined) => void;
   status: (message: string) => void;
   issue: (message: string) => void;
+  receiveFile: (contact: Contact, file: LiveFile) => void;
   receive: (
     contact: Contact,
     payload: string,
@@ -140,7 +145,12 @@ export function createLiveChat(options: {
   ) {
     if (current !== connection) return;
     connection.phase = phase;
-    options.state({ contact: connection.contact.id, phase, code });
+    options.state({
+      contact: connection.contact.id,
+      phase,
+      code,
+      filesReady: connection.filesReady,
+    });
   }
 
   function stop(drainReceived = false) {
@@ -149,6 +159,7 @@ export function createLiveChat(options: {
     current = undefined;
     clearTimeout(connection.timer);
     connection.cancel.abort();
+    connection.files?.stop();
     connection.drainOnClose = drainReceived;
     if (!drainReceived) connection.incoming.length = 0;
     connection.channel?.close();
@@ -156,9 +167,13 @@ export function createLiveChat(options: {
     options.state(undefined);
   }
 
-  function fail(connection: Connection, message: string) {
+  function fail(
+    connection: Connection,
+    message: string,
+    drainReceived = false,
+  ) {
     if (current !== connection) return;
-    stop();
+    stop(drainReceived);
     options.issue(message);
   }
 
@@ -199,7 +214,42 @@ export function createLiveChat(options: {
     }
   }
 
-  function bind(connection: Connection, channel: RTCDataChannel) {
+  function bind(
+    connection: Connection,
+    identity: Identity,
+    channel: RTCDataChannel,
+  ) {
+    if (
+      current === connection &&
+      channel.label === FILE_CHANNEL &&
+      !connection.files
+    ) {
+      connection.files = bindLiveFiles(channel, {
+        identity,
+        contact: connection.contact,
+        session: connection.id,
+        ready: (value) => {
+          connection.filesReady = value;
+          if (
+            connection.phase === 'connected' ||
+            connection.phase === 'reconnecting'
+          )
+            update(connection, connection.phase);
+        },
+        receive: (file) => {
+          if (
+            current === connection &&
+            options.sessionToken() === connection.sessionToken
+          )
+            options.receiveFile(connection.contact, file);
+          else file.bytes.fill(0);
+        },
+        issue: (message) => {
+          if (current === connection) options.issue(message);
+        },
+      });
+      return;
+    }
     if (
       current !== connection ||
       connection.channel ||
@@ -225,6 +275,7 @@ export function createLiveChat(options: {
       fail(
         connection,
         'The live connection stopped. You can share an encrypted link instead.',
+        true,
       ),
     );
     channel.addEventListener('message', (event: MessageEvent<unknown>) => {
@@ -262,6 +313,7 @@ export function createLiveChat(options: {
       phase: 'preparing',
       sessionToken: options.sessionToken(),
       incoming: [],
+      filesReady: false,
       receiving: false,
       drainOnClose: false,
     };
@@ -294,6 +346,8 @@ export function createLiveChat(options: {
         fail(
           connection,
           'A direct connection could not be made. Try the same network or share an encrypted link.',
+          connection.phase === 'connected' ||
+            connection.phase === 'reconnecting',
         );
       else if (peer.connectionState === 'closed' && current === connection) {
         stop(true);
@@ -339,7 +393,13 @@ export function createLiveChat(options: {
       try {
         bind(
           connection,
+          identity,
           connection.peer.createDataChannel(CHANNEL, { ordered: true }),
+        );
+        bind(
+          connection,
+          identity,
+          connection.peer.createDataChannel(FILE_CHANNEL, { ordered: true }),
         );
         const code = await localCode(connection, identity, 'offer');
         if (connection.phase !== 'connected')
@@ -371,7 +431,7 @@ export function createLiveChat(options: {
       const connection = begin(contact, offer.id, offer.expires);
       try {
         connection.peer.addEventListener('datachannel', (event) =>
-          bind(connection, event.channel),
+          bind(connection, identity, event.channel),
         );
         await connection.peer.setRemoteDescription({
           type: 'offer',
@@ -428,6 +488,16 @@ export function createLiveChat(options: {
       } catch {
         return false;
       }
+    },
+    async sendFile(contact: string, file: File): Promise<LiveFile> {
+      if (
+        current?.contact.id !== contact ||
+        current.phase !== 'connected' ||
+        !current.filesReady ||
+        !current.files
+      )
+        throw new Error('Connect to your contact to send a live attachment.');
+      return current.files.send(file);
     },
     stop,
   };

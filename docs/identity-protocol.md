@@ -7,8 +7,9 @@
 - `identity/passkeys.ts`: local UV-required ceremonies, fresh 32-byte challenges, selected-credential PRF, no account authentication server.
 - `identity/vault.ts`: encrypted private bundle, passkey/recovery wrapping and verified rewrap.
 - `identity/storage.ts`: IndexedDB atomic writes, pinned contacts, pending links, and history queries.
+- `identity/contact-book.ts`: vault-derived key and authenticated encryption for saved contacts and their verification state.
 - `identity/history.ts`: dedicated history key derivation, authenticated encryption for local transcripts, and payload validation.
-- `identity/live-chat.ts`: manually exchanged encrypted signaling, a direct WebRTC data channel, and connection lifecycle.
+- `identity/live-chat.ts` and `identity/live-files.ts`: manually exchanged encrypted signaling, direct WebRTC data channels, attachment encryption, and connection lifecycle.
 - `IdentityMessages.tsx`: passkey gate, manual import/export, and session lifecycle.
 - `timelock.ts`: pinned drand Quicknet parameters, local encryption and explicitly imported, verified beacons.
 
@@ -40,6 +41,8 @@ Auth mode is selected by always supplying the local messaging private key as sen
 
 Live invites and replies use the same envelope framing with a null opening round and a separate `encrypt-this/live-signal` HPKE context. Their encrypted JSON includes a random session ID, expiration, role, and data-only SDP with gathered ICE candidates and DTLS fingerprint. A reply must match the exact open invite. A live data channel carries ordinary untimed authenticated message envelopes so archive deduplication applies across both transports. The peer connection uses no configured ICE servers and the application exchanges no SDP over HTTP. The browser verifies the DTLS fingerprint from the authenticated SDP.
 
+Attachments use a separate ordered data channel. A fresh authenticated HPKE envelope encrypts the filename and bytes and binds the sender, recipient, live session, and random transfer ID. The channel carries the encapsulation and ciphertext in bounded chunks with backpressure. The recipient acknowledges after authenticating and opening the complete file. Both peers must advertise attachment support on the file channel. Decrypted files stay in bounded memory in the unlocked tab. An explicit download saves a copy outside the app.
+
 A timed message encrypts the complete em1 string with the established tlock construction for round `t`. et1 carries only version, round and ASCII-armored tlock ciphertext (max 62,000 characters). Parsing pins the Quicknet chain and single tlock recipient, bounds the armored data, and verifies the imported beacon signature. After opening, inner and outer rounds must match; the inner round is also bound by HPKE authentication. This is composition of existing HPKE and tlock implementations, not a custom public-key primitive. The outer date is untrusted until inner authentication succeeds. Possession of a public beacon reveals only the HPKE envelope, not its plaintext.
 
 ## Vault and recovery
@@ -55,6 +58,8 @@ Backups contain v, contact, binding, bundle, passkey wrapper and optional recove
 The app derives a non-extractable AES-256-GCM history key from the unlocked vault key with HKDF-SHA256, the full owner fingerprint as salt, and the context `encrypt-this/history/v1`. Each row uses a random 12-byte nonce. Authenticated metadata binds the format, owner, contact, direction, message ID, local timestamp, optional opening round, and optional incoming payload digest. The encrypted data holds the message body and, for outgoing messages, the share payload. Conversation indexes and routing metadata are visible in IndexedDB.
 
 IndexedDB v2 adds history and pending stores with an in-place migration. A message is archived after HPKE authentication, and the transaction removes the pending ciphertext while enforcing one history entry per owner, contact, direction and message ID. Pending entries carry the original encrypted envelope. The active tab can stage links in session storage before unlock. Decrypted messages and drafts live in memory. Plaintext buffers are zeroed when feasible and key references are dropped on lock. The browser, garbage collector, provider and OS can retain copies beyond application control.
+
+On unlock, IndexedDB v3 atomically replaces the legacy contact rows with an AES-256-GCM contact book. Its key is derived from the vault key with HKDF-SHA256, using the owner fingerprint as salt and `encrypt-this/contacts/v1` as the context. The owner and format are bound as associated data. Each write uses a fresh 12-byte nonce and compares the encrypted record against the version read before committing. Legacy contacts are carried over as unverified because their stored verification flags were unauthenticated. Once upgraded, the app requires an authenticated book to load or change contacts. Earlier authentic browser snapshots can still be replayed by someone able to restore local storage.
 
 ## Threat model and provenance
 

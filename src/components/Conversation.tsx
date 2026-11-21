@@ -6,12 +6,14 @@ import {
   createSignal,
   onCleanup,
 } from 'solid-js';
+import type { SavedContact } from '../lib/identity/contact-book';
 import { link } from '../lib/identity/encoding';
 import { openHistory, type ChatMessage } from '../lib/identity/history';
-import { readHistory, type SavedContact } from '../lib/identity/storage';
+import { readHistory } from '../lib/identity/storage';
 import { renderMessage } from '../lib/message-content';
 import { timeForRound } from '../lib/timelock';
 import { Icon } from './Icon';
+import LiveAttachment, { type Attachment } from './LiveAttachment';
 import MarkdownEditor from './MarkdownEditor';
 import { downloadText } from './ProfileBackup';
 
@@ -55,6 +57,9 @@ const displayTime = (date: number) =>
   });
 const PAGE_SIZE = 40;
 
+const nearBottom = (element: HTMLElement) =>
+  element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+
 export default function Conversation(props: {
   owner: string;
   historyKey: CryptoKey;
@@ -63,9 +68,13 @@ export default function Conversation(props: {
   draft: Draft;
   busy: boolean;
   liveConnected: boolean;
+  canAttach: boolean;
+  attachments: Attachment[];
+  fileSending: boolean;
   newestOutgoing: string | undefined;
   onDraft: (change: Partial<Draft>) => void;
   onCreate: (sendLive: boolean) => void;
+  onAttach: (file: File) => void;
   onBack: () => void;
   onDetails: () => void;
   onLive: () => void;
@@ -78,15 +87,33 @@ export default function Conversation(props: {
   const [problem, setProblem] = createSignal('');
   const [retry, setRetry] = createSignal(0);
   const [share, setShare] = createSignal<string>();
+  const newestOutgoing = createMemo(() => props.newestOutgoing);
+  const entries = createMemo(() =>
+    [...messages(), ...props.attachments].sort((a, b) => a.savedAt - b.savedAt),
+  );
   const sendingLive = createMemo(
     () => props.liveConnected && !props.draft.timed,
   );
   let scroll: HTMLDivElement | undefined;
+  let fileInput: HTMLInputElement | undefined;
   let previousLimit = PAGE_SIZE;
   let initial = true;
+  let followAttachments = true;
+  let previousAttachment: Attachment | undefined;
 
   createEffect(() => {
-    const id = props.newestOutgoing;
+    const latest = props.attachments.at(-1);
+    const added = latest && latest !== previousAttachment;
+    previousAttachment = latest;
+    if (added && (latest.direction === 'outgoing' || followAttachments)) {
+      queueMicrotask(() => {
+        if (scroll?.isConnected) scroll.scrollTop = scroll.scrollHeight;
+      });
+    }
+  });
+
+  createEffect(() => {
+    const id = newestOutgoing();
     if (id) setShare(id);
   });
 
@@ -109,9 +136,7 @@ export default function Conversation(props: {
           rows.slice(-batch).map((row) => openHistory(key, row)),
         );
         if (cancelled) return;
-        const wasNearBottom =
-          !scroll ||
-          scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 120;
+        const wasNearBottom = !scroll || nearBottom(scroll);
         const height = scroll?.scrollHeight ?? 0;
         const top = scroll?.scrollTop ?? 0;
         const addedEarlier = batch > previousLimit;
@@ -130,7 +155,7 @@ export default function Conversation(props: {
           if (cancelled || !scroll) return;
           if (addedEarlier)
             scroll.scrollTop = top + scroll.scrollHeight - height;
-          else if (initial || wasNearBottom || props.newestOutgoing)
+          else if (initial || wasNearBottom || newestOutgoing())
             scroll.scrollTop = scroll.scrollHeight;
           initial = false;
         });
@@ -174,7 +199,14 @@ export default function Conversation(props: {
           </button>
         </div>
       </header>
-      <div class="transcript" ref={scroll} aria-label="Conversation history">
+      <div
+        class="transcript"
+        ref={scroll}
+        aria-label="Conversation history"
+        onScroll={(event) =>
+          (followAttachments = nearBottom(event.currentTarget))
+        }
+      >
         <Show when={more()}>
           <button
             class="quiet-button earlier-button"
@@ -192,7 +224,7 @@ export default function Conversation(props: {
             </button>
           </p>
         </Show>
-        <Show when={!loading() && !problem() && messages().length === 0}>
+        <Show when={!loading() && !problem() && entries().length === 0}>
           <div class="thread-empty">
             <Icon name="lock" />
             <h3>Start the conversation</h3>
@@ -203,9 +235,20 @@ export default function Conversation(props: {
           </div>
         </Show>
         <ol class="message-list">
-          <For each={messages()}>
+          <For each={entries()}>
             {(message) => {
               const outgoing = message.direction === 'outgoing';
+              if ('file' in message)
+                return (
+                  <li class="message-row" classList={{ outgoing }}>
+                    <LiveAttachment file={message.file} />
+                    <div class="message-meta">
+                      <time datetime={new Date(message.savedAt).toISOString()}>
+                        {displayTime(message.savedAt)}
+                      </time>
+                    </div>
+                  </li>
+                );
               const sharePayload = message.sharePayload;
               const shareLink = sharePayload ? link(sharePayload) : '';
               const fits = shareLink.length <= 8000;
@@ -333,6 +376,32 @@ export default function Conversation(props: {
         />
         <div class="composer-fields">
           <div class="composer-options">
+            <Show when={sendingLive() && props.canAttach}>
+              <button
+                type="button"
+                class="secondary-button"
+                disabled={props.fileSending}
+                onClick={() => fileInput?.click()}
+              >
+                <Icon name="upload" />{' '}
+                {props.fileSending
+                  ? 'Sending attachment…'
+                  : 'Attach file or photo'}
+              </button>
+              <input
+                type="file"
+                aria-label="Attach file or photo"
+                tabindex="-1"
+                class="sr-only"
+                ref={fileInput}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  const file = input.files?.[0];
+                  input.value = '';
+                  if (file) props.onAttach(file);
+                }}
+              />
+            </Show>
             <label class="timed-option">
               <input
                 type="checkbox"

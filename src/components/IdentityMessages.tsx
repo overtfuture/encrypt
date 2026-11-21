@@ -13,6 +13,11 @@ import {
 } from 'solid-js';
 import QRCode from 'qrcode';
 import { guestPrefix } from '../lib/guest-message';
+import {
+  contactAccess,
+  type ContactAccess,
+  type SavedContact,
+} from '../lib/identity/contact-book';
 import { fingerprint, link, payload } from '../lib/identity/encoding';
 import {
   CONTACT_CARD_LIMIT,
@@ -33,6 +38,8 @@ import {
   validateMessagePayload,
 } from '../lib/identity/history';
 import { createLiveChat, type LiveState } from '../lib/identity/live-chat';
+import type { LiveFile } from '../lib/identity/live-files';
+import type { Attachment } from './LiveAttachment';
 import {
   createPasskey,
   registerPasskey,
@@ -55,6 +62,7 @@ import {
   dismissPending,
   enqueueMessage,
   findImported,
+  migrateContacts,
   PENDING_LIMIT,
   STAGED_LINKS_KEY,
   readContacts,
@@ -65,7 +73,6 @@ import {
   saveVault,
   verifyContact,
   type PendingMessage,
-  type SavedContact,
 } from '../lib/identity/storage';
 import {
   importBeacon,
@@ -94,7 +101,11 @@ type View =
   | 'live'
   | 'guest'
   | 'guest-contact';
-type Unlocked = { profile: Session; key: CryptoKey };
+type Unlocked = {
+  profile: Session;
+  key: CryptoKey;
+  contactBook: ContactAccess;
+};
 type PendingNotice = { entry: PendingMessage; round?: number; sender?: string };
 const EMPTY_DRAFT: Draft = { body: '', timed: false, opening: '' };
 const IDLE = 5 * 60 * 1000;
@@ -208,6 +219,8 @@ export default function IdentityMessages(props: {
   const [inboxReady, setInboxReady] = createSignal(false);
   const [staged, setStaged] = createSignal<string[]>([]);
   const [liveState, setLiveState] = createSignal<LiveState>();
+  const [attachments, setAttachments] = createSignal<Attachment[]>([]);
+  const [fileSending, setFileSending] = createSignal(false);
   const liveChat = createLiveChat({
     sessionToken: () => epoch,
     state: (next) => {
@@ -226,6 +239,7 @@ export default function IdentityMessages(props: {
     status: setStatus,
     issue: setError,
     receive: receiveLive,
+    receiveFile: (contact, file) => rememberFile(contact.id, file, 'incoming'),
   });
 
   let epoch = 0;
@@ -257,6 +271,9 @@ export default function IdentityMessages(props: {
     setContacts([]);
     setSelected('');
     setDrafts({});
+    for (const attachment of attachments()) attachment.file.bytes.fill(0);
+    setAttachments([]);
+    setFileSending(false);
     setNewestOutgoing(undefined);
     setView('chat');
     setSource('');
@@ -400,20 +417,26 @@ export default function IdentityMessages(props: {
 
   async function activate(profile: Session, active: () => boolean) {
     try {
-      const key = await historyKey(profile);
-      const rows = await readContacts().catch(() => {
-        if (active())
-          setError(
-            'Saved contacts could not be read. Your backup is still available.',
-          );
-        return [];
-      });
+      const [key, contactBook] = await Promise.all([
+        historyKey(profile),
+        contactAccess(profile),
+      ]);
+      if (!active()) return;
+      const rows = await migrateContacts(contactBook)
+        .then(() => readContacts(contactBook))
+        .catch(() => {
+          if (active())
+            setError(
+              'Saved contacts could not be read. Your backup is still available.',
+            );
+          return [];
+        });
       if (!active()) return;
       setName('');
       setEnrollment(undefined);
       setContacts(rows);
       lastActivity = Date.now();
-      setSession({ profile, key });
+      setSession({ profile, key, contactBook });
       setInboxReady(true);
     } finally {
       if (session()?.profile !== profile) profile.lock();
@@ -675,7 +698,7 @@ export default function IdentityMessages(props: {
     if (refreshContacts) {
       refreshContacts = false;
       try {
-        const next = await readContacts();
+        const next = await readContacts(current.contactBook);
         if (active()) updateContacts(next);
       } catch {
         if (active()) setError('Saved contacts could not be refreshed.');
@@ -745,8 +768,7 @@ export default function IdentityMessages(props: {
   function saveReviewed() {
     run(async (active) => {
       const contact = review()!;
-      await saveContact(contact);
-      const next = await readContacts();
+      const next = await saveContact(session()!.contactBook, contact);
       if (!active()) {
         channel?.postMessage(null);
         return;
@@ -767,11 +789,9 @@ export default function IdentityMessages(props: {
     )
       return;
     run(async (active) => {
-      await deleteContact(contact.id);
+      const next = await deleteContact(session()!.contactBook, contact.id);
       if (active()) {
-        updateContacts(
-          contacts().filter((row) => row.contact.id !== contact.id),
-        );
+        updateContacts(next);
         setStatus('Contact deleted.');
         if (document.activeElement === document.body)
           (emptyChats() ? firstContactButton : addContactButton)?.focus();
@@ -792,6 +812,13 @@ export default function IdentityMessages(props: {
     run(async (active) => {
       await clearHistory(owner, contact.id);
       if (active()) {
+        setAttachments((current) =>
+          current.filter((attachment) => {
+            if (attachment.contact !== contact.id) return true;
+            attachment.file.bytes.fill(0);
+            return false;
+          }),
+        );
         if (newestOutgoing()?.contact === contact.id)
           setNewestOutgoing(undefined);
         setStatus('Messages cleared.');
@@ -851,6 +878,51 @@ export default function IdentityMessages(props: {
     });
     if (!active()) return;
     if (await saveMessage(row)) notifyChange();
+  }
+
+  function rememberFile(
+    contact: string,
+    file: LiveFile,
+    direction: Attachment['direction'],
+  ) {
+    const next = [
+      ...attachments(),
+      { contact, file, direction, savedAt: Date.now() },
+    ];
+    let remaining = 30_000_000;
+    let first = next.length;
+    while (
+      first > 0 &&
+      next.length - first < 20 &&
+      remaining >= next[first - 1].file.bytes.length
+    ) {
+      remaining -= next[--first].file.bytes.length;
+    }
+    for (const expired of next.slice(0, first)) expired.file.bytes.fill(0);
+    setAttachments(next.slice(first));
+  }
+
+  async function sendFile(source: File) {
+    if (!session() || fileSending()) return;
+    const contact = selected();
+    const startedAt = epoch;
+    setFileSending(true);
+    setError('');
+    setStatus('Encrypting and sending attachment…');
+    try {
+      const file = await liveChat.sendFile(contact, source);
+      if (epoch === startedAt) {
+        rememberFile(contact, file, 'outgoing');
+        setStatus('Attachment received by your contact.');
+      } else file.bytes.fill(0);
+    } catch (cause) {
+      if (epoch === startedAt) {
+        setStatus('');
+        setError(errorMessage(cause));
+      }
+    } finally {
+      if (epoch === startedAt) setFileSending(false);
+    }
   }
 
   function compose(sendLive: boolean) {
@@ -1437,6 +1509,15 @@ export default function IdentityMessages(props: {
                             liveState()?.contact === id &&
                             liveState()?.phase === 'connected'
                           }
+                          canAttach={
+                            liveState()?.contact === id &&
+                            liveState()?.filesReady === true
+                          }
+                          attachments={attachments().filter(
+                            (attachment) => attachment.contact === id,
+                          )}
+                          fileSending={fileSending()}
+                          onAttach={sendFile}
                           onCopy={copy}
                         />
                       )}
@@ -1711,8 +1792,10 @@ export default function IdentityMessages(props: {
                                   disabled={busy()}
                                   onClick={() =>
                                     run(async (active) => {
-                                      await verifyContact(contact().contact.id);
-                                      const rows = await readContacts();
+                                      const rows = await verifyContact(
+                                        session()!.contactBook,
+                                        contact().contact.id,
+                                      );
                                       if (active()) {
                                         updateContacts(rows);
                                         setStatus('Contact marked verified.');

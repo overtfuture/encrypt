@@ -1,5 +1,7 @@
 import { linkTestTransports } from './live-transport';
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import QRCode from 'qrcode';
 import {
   backupText,
   createVault,
@@ -326,7 +328,7 @@ test('rejects oversized fragments without breaking the app', async ({
   expect(errors).toEqual([]);
 });
 
-test('a corrupt contact does not hide the existing vault or backup controls', async ({
+test('a damaged encrypted contact book is rejected without hiding backup controls', async ({
   page,
 }) => {
   await mockPasskeys(page, 6);
@@ -335,6 +337,8 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
   await expect(
     page.getByRole('button', { name: 'Lock', exact: true }),
   ).toBeVisible();
+  const contact = await generateIdentity('Contact in damaged book');
+  await addCard(page, contactText(contact.contact));
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => {
       const r = indexedDB.open('encrypt-this-identities-v1');
@@ -342,7 +346,13 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
     });
     await new Promise<void>((resolve) => {
       const tx = db.transaction('contacts', 'readwrite');
-      tx.objectStore('contacts').put({ broken: true }, 'bad');
+      const store = tx.objectStore('contacts');
+      const request = store.get('book');
+      request.onsuccess = () => {
+        const book = request.result;
+        new Uint8Array(book.ciphertext)[0] ^= 1;
+        store.put(book, 'book');
+      };
       tx.oncomplete = () => resolve();
     });
     db.close();
@@ -359,6 +369,7 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
   ).toBeVisible();
   await unlock(page);
   await expect(page.getByRole('alert')).toContainText('contact');
+  await expect(page.getByText('Contact in damaged book')).toHaveCount(0);
 });
 
 // This substitutes only the WebAuthn boundary. HPKE, vault crypto and IndexedDB are real.
@@ -491,6 +502,10 @@ test('private Markdown preview preserves the draft and resets after creating a l
   await addCard(page, contactText(contact.contact));
 
   const draft = '**Private draft**';
+  await expect(page.getByLabel('Private message')).toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
   await page.getByLabel('Private message').fill(draft);
   await page.getByRole('button', { name: 'Preview Markdown' }).click();
   const preview = page.getByRole('region', { name: 'Markdown preview' });
@@ -652,6 +667,10 @@ test('guest Markdown preview uses the same formatting and safe image links as op
   await page.getByRole('button', { name: 'New guest message' }).click();
   const draft =
     '# Guest note\n\n![Picture](https://example.com/picture.png)\n\n<b>Raw HTML</b>';
+  await expect(page.getByLabel('Message for guest')).toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
   await page.getByLabel('Message for guest').fill(draft);
   await page.getByRole('button', { name: 'Preview Markdown' }).click();
   const preview = page.getByRole('region', { name: 'Markdown preview' });
@@ -1261,7 +1280,7 @@ test('contact QR scans locally, fragments are cleared, and idle lock clears draf
   ).toBe(true);
 });
 
-test('upgrading a v1 vault retains verified contacts and rejects wrong-recipient and tampered links', async ({
+test('upgrading a v1 vault encrypts contacts and requires fingerprint reverification', async ({
   page,
   baseURL,
 }) => {
@@ -1307,10 +1326,26 @@ test('upgrading a v1 vault retains verified contacts and rejects wrong-recipient
   await page.goto('./');
   await unlock(page);
   await openStoredContact(page, 'Verified contact');
+  const conversation = page.getByRole('region', {
+    name: 'Conversation with Verified contact',
+  });
   await expect(
-    page
-      .getByRole('region', { name: 'Conversation with Verified contact' })
-      .getByText('Verified', { exact: true }),
+    conversation.getByText('Unverified', { exact: true }),
+  ).toBeVisible();
+  expect(await localRecords(page)).not.toContain('Verified contact');
+  expect(await localRecords(page)).not.toContain(sender.contact.id);
+  await page.getByRole('button', { name: 'Contact details' }).click();
+  await page
+    .getByRole('button', { name: 'I compared the full fingerprint' })
+    .click();
+  await expect(page.getByRole('status')).toContainText(
+    'Contact marked verified',
+  );
+  await page.reload();
+  await unlock(page);
+  await openStoredContact(page, 'Verified contact');
+  await expect(
+    conversation.getByText('Verified', { exact: true }),
   ).toBeVisible();
 
   const wrong = await encryptMessage(sender, other.contact, 'Wrong recipient');
@@ -1467,7 +1502,7 @@ for (const native of [false, true]) {
         const externalRequests: string[] = [];
         for (const page of [alice, bob])
           page.on('request', (request) => {
-            if (!request.url().startsWith(new URL(baseURL!).origin))
+            if (new URL(request.url()).origin !== new URL(baseURL!).origin)
               externalRequests.push(request.url());
           });
         for (const [page, seed, name] of [
@@ -1482,6 +1517,7 @@ for (const native of [false, true]) {
         const bobCard = await shareCard(bob);
         await addCard(alice, bobCard);
         await addCard(bob, aliceCard);
+        await expect(alice.getByLabel('Attach file or photo')).toHaveCount(0);
 
         const button = (page: Page, name: string) =>
           page.getByRole('button', { name, exact: true });
@@ -1523,6 +1559,42 @@ for (const native of [false, true]) {
         await expect(alice.getByTestId('identity-plaintext')).toHaveText(
           'Live from Bob',
         );
+        const attachment = Buffer.alloc(96_000, 0x41);
+        const attach = alice.getByLabel('Attach file or photo');
+        await expect(attach).toHaveCount(1);
+        await attach.setInputFiles({
+          name: 'live-notes.txt',
+          mimeType: 'text/plain',
+          buffer: attachment,
+        });
+        const download = bob.getByRole('button', {
+          name: 'Download live-notes.txt',
+        });
+        await expect(download).toBeVisible();
+        const savedFile = bob.waitForEvent('download');
+        await download.click();
+        const downloaded = await savedFile;
+        expect(downloaded.suggestedFilename()).toBe('live-notes.txt');
+        expect(await readFile(await downloaded.path())).toEqual(attachment);
+        expect(await localRecords(bob)).not.toContain('live-notes.txt');
+        await expect(bob.getByLabel('Encrypted link')).toHaveCount(0);
+        const photo = await QRCode.toBuffer('live PNG preview');
+        await bob.getByLabel('Attach file or photo').setInputFiles({
+          name: 'live-photo.png',
+          mimeType: 'image/png',
+          buffer: photo,
+        });
+        await button(alice, 'Preview photo').click();
+        await expect(
+          alice.getByRole('img', { name: 'live-photo.png' }),
+        ).toBeVisible();
+        await expect
+          .poll(() =>
+            alice
+              .getByRole('img', { name: 'live-photo.png' })
+              .evaluate((image: HTMLImageElement) => image.naturalWidth),
+          )
+          .toBeGreaterThan(0);
         expect(await localRecords(alice)).not.toContain('Live from Bob');
         await alice.evaluate(() => {
           const descriptor = Object.getOwnPropertyDescriptor(
@@ -1574,6 +1646,9 @@ for (const native of [false, true]) {
         );
         await unlock(bob);
         await openStoredContact(bob, 'Alice');
+        await expect(
+          bob.getByRole('button', { name: 'Download live-notes.txt' }),
+        ).toHaveCount(0);
         await button(bob, 'Live chat').click();
         await bob.getByLabel('Paste invite code').fill(offer);
         await button(bob, 'Join live chat').click();
@@ -1581,6 +1656,9 @@ for (const native of [false, true]) {
         await alice.reload();
         await unlock(alice);
         await openStoredContact(alice, 'Bob');
+        await expect(
+          alice.getByRole('button', { name: 'Download live-notes.txt' }),
+        ).toHaveCount(0);
         await expect(alice.getByTestId('identity-plaintext')).toHaveText(
           incoming,
         );

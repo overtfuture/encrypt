@@ -1,6 +1,6 @@
-import { decode, digest, payload, random, text, utf8 } from './encoding';
+import { digest, payload, random, text, utf8 } from './encoding';
 import { parseMessage, timedEnvelope } from './messages';
-import type { Session } from './vault';
+import { deriveVaultKey, type Session } from './vault';
 
 export type HistoryMetadata = {
   owner: string;
@@ -20,27 +20,8 @@ export type ChatMessage = HistoryMetadata & {
   sharePayload?: string;
 };
 
-export async function historyKey(session: Session): Promise<CryptoKey> {
-  if (session.locked) throw new Error('Profile is locked.');
-  const material = await crypto.subtle.importKey(
-    'raw',
-    session.vaultKey,
-    'HKDF',
-    false,
-    ['deriveKey'],
-  );
-  return crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: decode(session.identity.contact.id, 32),
-      info: utf8.encode('encrypt-this/history/v1'),
-    },
-    material,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
+export function historyKey(session: Session): Promise<CryptoKey> {
+  return deriveVaultKey(session, 'encrypt-this/history/v1');
 }
 
 function metadata(row: HistoryMetadata): HistoryMetadata {
