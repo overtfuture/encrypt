@@ -34,6 +34,30 @@ export type Session = {
   locked: boolean;
   lock(): void;
 };
+
+export async function deriveVaultKey(session: Session, info: string) {
+  if (session.locked) throw new Error('Profile is locked.');
+  const material = await crypto.subtle.importKey(
+    'raw',
+    session.vaultKey,
+    'HKDF',
+    false,
+    ['deriveKey'],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: decode(session.identity.contact.id, 32),
+      info: utf8.encode(info),
+    },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
 const context = (purpose: string, id: string) =>
   utf8.encode(`encrypt-this/vault/v1/${purpose}/${id}`);
 async function aes(raw: Uint8Array<ArrayBuffer>) {

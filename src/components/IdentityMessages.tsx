@@ -13,6 +13,11 @@ import {
 } from 'solid-js';
 import QRCode from 'qrcode';
 import { guestPrefix } from '../lib/guest-message';
+import {
+  contactAccess,
+  type ContactAccess,
+  type SavedContact,
+} from '../lib/identity/contact-book';
 import { fingerprint, link, payload } from '../lib/identity/encoding';
 import {
   CONTACT_CARD_LIMIT,
@@ -57,6 +62,7 @@ import {
   dismissPending,
   enqueueMessage,
   findImported,
+  migrateContacts,
   PENDING_LIMIT,
   STAGED_LINKS_KEY,
   readContacts,
@@ -67,7 +73,6 @@ import {
   saveVault,
   verifyContact,
   type PendingMessage,
-  type SavedContact,
 } from '../lib/identity/storage';
 import {
   importBeacon,
@@ -96,7 +101,11 @@ type View =
   | 'live'
   | 'guest'
   | 'guest-contact';
-type Unlocked = { profile: Session; key: CryptoKey };
+type Unlocked = {
+  profile: Session;
+  key: CryptoKey;
+  contactBook: ContactAccess;
+};
 type PendingNotice = { entry: PendingMessage; round?: number; sender?: string };
 const EMPTY_DRAFT: Draft = { body: '', timed: false, opening: '' };
 const IDLE = 5 * 60 * 1000;
@@ -408,20 +417,26 @@ export default function IdentityMessages(props: {
 
   async function activate(profile: Session, active: () => boolean) {
     try {
-      const key = await historyKey(profile);
-      const rows = await readContacts().catch(() => {
-        if (active())
-          setError(
-            'Saved contacts could not be read. Your backup is still available.',
-          );
-        return [];
-      });
+      const [key, contactBook] = await Promise.all([
+        historyKey(profile),
+        contactAccess(profile),
+      ]);
+      if (!active()) return;
+      const rows = await migrateContacts(contactBook)
+        .then(() => readContacts(contactBook))
+        .catch(() => {
+          if (active())
+            setError(
+              'Saved contacts could not be read. Your backup is still available.',
+            );
+          return [];
+        });
       if (!active()) return;
       setName('');
       setEnrollment(undefined);
       setContacts(rows);
       lastActivity = Date.now();
-      setSession({ profile, key });
+      setSession({ profile, key, contactBook });
       setInboxReady(true);
     } finally {
       if (session()?.profile !== profile) profile.lock();
@@ -683,7 +698,7 @@ export default function IdentityMessages(props: {
     if (refreshContacts) {
       refreshContacts = false;
       try {
-        const next = await readContacts();
+        const next = await readContacts(current.contactBook);
         if (active()) updateContacts(next);
       } catch {
         if (active()) setError('Saved contacts could not be refreshed.');
@@ -753,8 +768,7 @@ export default function IdentityMessages(props: {
   function saveReviewed() {
     run(async (active) => {
       const contact = review()!;
-      await saveContact(contact);
-      const next = await readContacts();
+      const next = await saveContact(session()!.contactBook, contact);
       if (!active()) {
         channel?.postMessage(null);
         return;
@@ -775,11 +789,9 @@ export default function IdentityMessages(props: {
     )
       return;
     run(async (active) => {
-      await deleteContact(contact.id);
+      const next = await deleteContact(session()!.contactBook, contact.id);
       if (active()) {
-        updateContacts(
-          contacts().filter((row) => row.contact.id !== contact.id),
-        );
+        updateContacts(next);
         setStatus('Contact deleted.');
         if (document.activeElement === document.body)
           (emptyChats() ? firstContactButton : addContactButton)?.focus();
@@ -1780,8 +1792,10 @@ export default function IdentityMessages(props: {
                                   disabled={busy()}
                                   onClick={() =>
                                     run(async (active) => {
-                                      await verifyContact(contact().contact.id);
-                                      const rows = await readContacts();
+                                      const rows = await verifyContact(
+                                        session()!.contactBook,
+                                        contact().contact.id,
+                                      );
                                       if (active()) {
                                         updateContacts(rows);
                                         setStatus('Contact marked verified.');

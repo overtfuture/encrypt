@@ -328,7 +328,7 @@ test('rejects oversized fragments without breaking the app', async ({
   expect(errors).toEqual([]);
 });
 
-test('a corrupt contact does not hide the existing vault or backup controls', async ({
+test('a damaged encrypted contact book is rejected without hiding backup controls', async ({
   page,
 }) => {
   await mockPasskeys(page, 6);
@@ -337,6 +337,8 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
   await expect(
     page.getByRole('button', { name: 'Lock', exact: true }),
   ).toBeVisible();
+  const contact = await generateIdentity('Contact in damaged book');
+  await addCard(page, contactText(contact.contact));
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => {
       const r = indexedDB.open('encrypt-this-identities-v1');
@@ -344,7 +346,13 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
     });
     await new Promise<void>((resolve) => {
       const tx = db.transaction('contacts', 'readwrite');
-      tx.objectStore('contacts').put({ broken: true }, 'bad');
+      const store = tx.objectStore('contacts');
+      const request = store.get('book');
+      request.onsuccess = () => {
+        const book = request.result;
+        new Uint8Array(book.ciphertext)[0] ^= 1;
+        store.put(book, 'book');
+      };
       tx.oncomplete = () => resolve();
     });
     db.close();
@@ -361,6 +369,7 @@ test('a corrupt contact does not hide the existing vault or backup controls', as
   ).toBeVisible();
   await unlock(page);
   await expect(page.getByRole('alert')).toContainText('contact');
+  await expect(page.getByText('Contact in damaged book')).toHaveCount(0);
 });
 
 // This substitutes only the WebAuthn boundary. HPKE, vault crypto and IndexedDB are real.
@@ -493,6 +502,10 @@ test('private Markdown preview preserves the draft and resets after creating a l
   await addCard(page, contactText(contact.contact));
 
   const draft = '**Private draft**';
+  await expect(page.getByLabel('Private message')).toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
   await page.getByLabel('Private message').fill(draft);
   await page.getByRole('button', { name: 'Preview Markdown' }).click();
   const preview = page.getByRole('region', { name: 'Markdown preview' });
@@ -654,6 +667,10 @@ test('guest Markdown preview uses the same formatting and safe image links as op
   await page.getByRole('button', { name: 'New guest message' }).click();
   const draft =
     '# Guest note\n\n![Picture](https://example.com/picture.png)\n\n<b>Raw HTML</b>';
+  await expect(page.getByLabel('Message for guest')).toHaveAttribute(
+    'spellcheck',
+    'false',
+  );
   await page.getByLabel('Message for guest').fill(draft);
   await page.getByRole('button', { name: 'Preview Markdown' }).click();
   const preview = page.getByRole('region', { name: 'Markdown preview' });
@@ -1263,7 +1280,7 @@ test('contact QR scans locally, fragments are cleared, and idle lock clears draf
   ).toBe(true);
 });
 
-test('upgrading a v1 vault retains verified contacts and rejects wrong-recipient and tampered links', async ({
+test('upgrading a v1 vault encrypts contacts and requires fingerprint reverification', async ({
   page,
   baseURL,
 }) => {
@@ -1309,10 +1326,26 @@ test('upgrading a v1 vault retains verified contacts and rejects wrong-recipient
   await page.goto('./');
   await unlock(page);
   await openStoredContact(page, 'Verified contact');
+  const conversation = page.getByRole('region', {
+    name: 'Conversation with Verified contact',
+  });
   await expect(
-    page
-      .getByRole('region', { name: 'Conversation with Verified contact' })
-      .getByText('Verified', { exact: true }),
+    conversation.getByText('Unverified', { exact: true }),
+  ).toBeVisible();
+  expect(await localRecords(page)).not.toContain('Verified contact');
+  expect(await localRecords(page)).not.toContain(sender.contact.id);
+  await page.getByRole('button', { name: 'Contact details' }).click();
+  await page
+    .getByRole('button', { name: 'I compared the full fingerprint' })
+    .click();
+  await expect(page.getByRole('status')).toContainText(
+    'Contact marked verified',
+  );
+  await page.reload();
+  await unlock(page);
+  await openStoredContact(page, 'Verified contact');
+  await expect(
+    conversation.getByText('Verified', { exact: true }),
   ).toBeVisible();
 
   const wrong = await encryptMessage(sender, other.contact, 'Wrong recipient');

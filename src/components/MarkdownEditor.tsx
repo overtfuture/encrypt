@@ -43,6 +43,8 @@ export default function MarkdownEditor(props: {
         maxlength={props.maxLength}
         placeholder={props.placeholder}
         autocomplete="off"
+        autocorrect="off"
+        spellcheck={false}
         hidden={preview()}
         value={props.value}
         onInput={(event) => props.onInput(event.currentTarget.value)}

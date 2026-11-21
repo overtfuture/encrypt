@@ -6,9 +6,10 @@ import {
   createSignal,
   onCleanup,
 } from 'solid-js';
+import type { SavedContact } from '../lib/identity/contact-book';
 import { link } from '../lib/identity/encoding';
 import { openHistory, type ChatMessage } from '../lib/identity/history';
-import { readHistory, type SavedContact } from '../lib/identity/storage';
+import { readHistory } from '../lib/identity/storage';
 import { renderMessage } from '../lib/message-content';
 import { timeForRound } from '../lib/timelock';
 import { Icon } from './Icon';

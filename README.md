@@ -87,6 +87,8 @@ A synced passkey does **not** contain this app’s vault. Restore requires the e
 
 A page session locks after five minutes without pointer/keyboard activity, on page exit, or with **Lock**. Reload starts locked. Plaintext drafts, messages, recovery codes and key references are cleared where feasible, but JavaScript/browser memory erasure cannot be guaranteed. Clipboard contents and downloaded files are outside that clearing.
 
+The app encrypts saved contact cards and verification status. On the first unlock after upgrading from an older version, saved contacts and their chat history are retained. Compare the full fingerprint again to restore each contact’s **Verified** status.
+
 Messages are limited to 16,000 UTF-8 bytes. Contact names are at most 80 UTF-8 bytes. Ciphertext links are offered up to 8,000 characters. Larger messages use text or files. Contact QR payloads can be up to 800 characters. Contacts, verification and chat history are local to this browser and origin. The app deduplicates authenticated messages in the local archive. The pending list can hold up to 20 links per profile. Drafts stay in memory until you lock or reload.
 
 ## Security and validation

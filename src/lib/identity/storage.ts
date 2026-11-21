@@ -1,7 +1,16 @@
 import { contactText, parseContact, type Contact } from './messages';
 import { backupText, parseBackup, type Vault } from './vault';
 import type { ArchivedMessage } from './history';
-export type SavedContact = { contact: Contact; verified: boolean };
+import {
+  CONTACT_LIMIT,
+  isContactBook,
+  openContactBook,
+  sealContactBook,
+  type ContactAccess,
+  type SavedContact,
+  type SealedContactBook,
+} from './contact-book';
+
 export type PendingMessage = {
   owner: string;
   source: string;
@@ -11,6 +20,9 @@ export type PendingMessage = {
 export const PENDING_LIMIT = 20;
 export const STAGED_LINKS_KEY = 'encrypt-this/staged-links';
 const DB = 'encrypt-this-identities-v1';
+const CONTACT_BOOK_VERSION = 3;
+const CONTACT_BOOK_KEY = 'book';
+const CONTACT_WRITE_ATTEMPTS = 4;
 
 export function deleteIdentityDatabase(onBlocked: () => void): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -24,16 +36,27 @@ export function deleteIdentityDatabase(onBlocked: () => void): Promise<void> {
   });
 }
 
-async function database(): Promise<IDBDatabase> {
+function openDatabase(
+  version?: number,
+  upgradeContacts?: (tx: IDBTransaction) => void,
+): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 2);
+    const request = indexedDB.open(DB, version);
     let blocked = false;
     request.onupgradeneeded = (event) => {
       const db = request.result;
+      const tx = request.transaction!;
+      if (blocked) return tx.abort();
+      if (version === CONTACT_BOOK_VERSION) {
+        if (event.oldVersion !== 2 || !upgradeContacts) return tx.abort();
+        upgradeContacts(tx);
+        return;
+      }
       if (event.oldVersion === 0) {
         db.createObjectStore('vault');
         db.createObjectStore('contacts');
       }
+      if (version !== 2) return;
       const messages = db.createObjectStore('messages', {
         keyPath: ['owner', 'contact', 'direction', 'id'],
       });
@@ -57,9 +80,22 @@ async function database(): Promise<IDBDatabase> {
       if (blocked) db.close();
       else resolve(db);
     };
-    request.onerror = () =>
-      reject(new Error('Local storage is unavailable. No identity was saved.'));
+    request.onerror = () => reject(request.error);
   });
+}
+
+async function database(): Promise<IDBDatabase> {
+  const db = await openDatabase();
+  if (db.version >= 2) return db;
+  db.close();
+  try {
+    return await openDatabase(2);
+  } catch (cause) {
+    // Another tab may have finished both upgrades since we observed version 1.
+    if (cause instanceof DOMException && cause.name === 'VersionError')
+      return openDatabase();
+    throw cause;
+  }
 }
 async function transaction<T>(
   store: string | string[],
@@ -141,61 +177,151 @@ export async function saveVault(
     };
   });
 }
-export async function readContacts(): Promise<SavedContact[]> {
-  const rows = await transaction<SavedContact[]>(
-    'contacts',
-    'readonly',
-    (s, done) => {
-      const r = s.getAll(undefined, 201);
-      r.onsuccess = () => done(r.result);
-    },
-  );
-  if (rows.length > 200) throw new Error('Contact limit exceeded.');
-  return Promise.all(
-    rows.map(async (row) => ({
-      contact: await parseContact(contactText(row.contact)),
-      verified: row.verified === true,
-    })),
+type LegacyContacts = { vault: string | undefined; rows: SavedContact[] };
+
+export async function migrateContacts(access: ContactAccess): Promise<void> {
+  for (let attempt = 0; attempt < CONTACT_WRITE_ATTEMPTS; attempt++) {
+    const legacy = await transaction<LegacyContacts | undefined>(
+      ['contacts', 'vault'],
+      'readonly',
+      (store, done) => {
+        if (store.transaction.db.version >= CONTACT_BOOK_VERSION)
+          return done(undefined);
+        const vault = store.transaction.objectStore('vault').get('identity');
+        const rows = store.getAll(undefined, CONTACT_LIMIT + 1);
+        rows.onsuccess = () => done({ vault: vault.result, rows: rows.result });
+      },
+    );
+    if (!legacy) return;
+    if (!legacy.vault || parseBackup(legacy.vault).contact.id !== access.owner)
+      throw new Error('The saved profile changed. Unlock it again.');
+    if (legacy.rows.length > CONTACT_LIMIT)
+      throw new Error('Contact limit exceeded.');
+
+    const snapshot = JSON.stringify(legacy.rows);
+    const contacts = await Promise.all(
+      legacy.rows.map(async (row) => ({
+        contact: await parseContact(contactText(row.contact)),
+        verified: false,
+      })),
+    );
+    const sealed = await sealContactBook(access, contacts);
+    try {
+      const db = await openDatabase(CONTACT_BOOK_VERSION, (tx) => {
+        const store = tx.objectStore('contacts');
+        const vault = tx.objectStore('vault').get('identity');
+        const rows = store.getAll(undefined, CONTACT_LIMIT + 1);
+        rows.onsuccess = () => {
+          if (
+            vault.result !== legacy.vault ||
+            JSON.stringify(rows.result) !== snapshot
+          )
+            return tx.abort();
+          store.clear();
+          store.put(sealed, CONTACT_BOOK_KEY);
+        };
+      });
+      db.close();
+      return;
+    } catch (cause) {
+      // Retry if a concurrent write or reset invalidated the upgrade snapshot.
+      if (!(cause instanceof DOMException && cause.name === 'AbortError'))
+        throw cause;
+    }
+  }
+  throw new Error(
+    'Saved contacts changed during the upgrade. Unlock again to retry.',
   );
 }
-export async function saveContact(
-  contact: Contact,
-  verified = false,
-): Promise<void> {
+
+function readContactBook(): Promise<SealedContactBook> {
+  return transaction('contacts', 'readonly', (store, done) => {
+    if (store.transaction.db.version < CONTACT_BOOK_VERSION)
+      throw new Error(
+        'Saved contacts have not been upgraded. Unlock again to retry.',
+      );
+    const request = store.get(CONTACT_BOOK_KEY);
+    request.onsuccess = () => {
+      if (isContactBook(request.result)) done(request.result);
+      else store.transaction.abort();
+    };
+  });
+}
+
+export async function readContacts(
+  access: ContactAccess,
+): Promise<SavedContact[]> {
+  return openContactBook(access, await readContactBook());
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array) {
+  return (
+    left.length === right.length &&
+    left.every((byte, index) => byte === right[index])
+  );
+}
+
+async function changeContacts(
+  access: ContactAccess,
+  change: (contacts: SavedContact[]) => SavedContact[] | undefined,
+): Promise<SavedContact[]> {
+  for (let attempt = 0; attempt < CONTACT_WRITE_ATTEMPTS; attempt++) {
+    const previous = await readContactBook();
+    const contacts = await openContactBook(access, previous);
+    const next = change(contacts);
+    if (!next) return contacts;
+    const sealed = await sealContactBook(access, next);
+    const saved = await transaction<boolean>(
+      'contacts',
+      'readwrite',
+      (store, done) => {
+        if (store.transaction.db.version < CONTACT_BOOK_VERSION)
+          return done(false);
+        const request = store.get(CONTACT_BOOK_KEY);
+        request.onsuccess = () => {
+          const current = request.result;
+          if (
+            !isContactBook(current) ||
+            !sameBytes(current.iv, previous.iv) ||
+            !sameBytes(
+              new Uint8Array(current.ciphertext),
+              new Uint8Array(previous.ciphertext),
+            )
+          )
+            return done(false);
+          store.put(sealed, CONTACT_BOOK_KEY);
+          done(true);
+        };
+      },
+    );
+    if (saved) return next;
+  }
+  throw new Error('Saved contacts changed in another tab. Try again.');
+}
+
+export async function saveContact(access: ContactAccess, contact: Contact) {
   const valid = await parseContact(contactText(contact));
-  return transaction<void>('contacts', 'readwrite', (s, done) => {
-    const existing = s.getKey(valid.id);
-    existing.onsuccess = () => {
-      if (existing.result !== undefined) return done();
-      const count = s.count();
-      count.onsuccess = () => {
-        if (count.result >= 200) {
-          s.transaction.abort();
-          return;
-        }
-        s.add({ contact: valid, verified }, valid.id);
-        done();
-      };
-    };
+  return changeContacts(access, (contacts) => {
+    if (contacts.some((row) => row.contact.id === valid.id)) return;
+    if (contacts.length >= CONTACT_LIMIT)
+      throw new Error('Contact limit exceeded.');
+    return [...contacts, { contact: valid, verified: false }];
   });
 }
-export function deleteContact(id: string): Promise<void> {
-  return transaction('contacts', 'readwrite', (s, done) => {
-    s.delete(id);
-    done();
+
+export function deleteContact(access: ContactAccess, id: string) {
+  return changeContacts(access, (contacts) => {
+    const kept = contacts.filter((row) => row.contact.id !== id);
+    return kept.length < contacts.length ? kept : undefined;
   });
 }
-export async function verifyContact(id: string): Promise<void> {
-  return transaction<void>('contacts', 'readwrite', (s, done) => {
-    const r = s.get(id);
-    r.onsuccess = () => {
-      if (!r.result) {
-        s.transaction.abort();
-        return;
-      }
-      s.put({ ...r.result, verified: true }, id);
-      done();
-    };
+
+export function verifyContact(access: ContactAccess, id: string) {
+  return changeContacts(access, (contacts) => {
+    const row = contacts.find((entry) => entry.contact.id === id);
+    if (!row) throw new Error('This contact is no longer saved.');
+    row.verified = true;
+    return contacts;
   });
 }
 

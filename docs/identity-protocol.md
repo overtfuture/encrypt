@@ -7,6 +7,7 @@
 - `identity/passkeys.ts`: local UV-required ceremonies, fresh 32-byte challenges, selected-credential PRF, no account authentication server.
 - `identity/vault.ts`: encrypted private bundle, passkey/recovery wrapping and verified rewrap.
 - `identity/storage.ts`: IndexedDB atomic writes, pinned contacts, pending links, and history queries.
+- `identity/contact-book.ts`: vault-derived key and authenticated encryption for saved contacts and their verification state.
 - `identity/history.ts`: dedicated history key derivation, authenticated encryption for local transcripts, and payload validation.
 - `identity/live-chat.ts` and `identity/live-files.ts`: manually exchanged encrypted signaling, direct WebRTC data channels, attachment encryption, and connection lifecycle.
 - `IdentityMessages.tsx`: passkey gate, manual import/export, and session lifecycle.
@@ -57,6 +58,8 @@ Backups contain v, contact, binding, bundle, passkey wrapper and optional recove
 The app derives a non-extractable AES-256-GCM history key from the unlocked vault key with HKDF-SHA256, the full owner fingerprint as salt, and the context `encrypt-this/history/v1`. Each row uses a random 12-byte nonce. Authenticated metadata binds the format, owner, contact, direction, message ID, local timestamp, optional opening round, and optional incoming payload digest. The encrypted data holds the message body and, for outgoing messages, the share payload. Conversation indexes and routing metadata are visible in IndexedDB.
 
 IndexedDB v2 adds history and pending stores with an in-place migration. A message is archived after HPKE authentication, and the transaction removes the pending ciphertext while enforcing one history entry per owner, contact, direction and message ID. Pending entries carry the original encrypted envelope. The active tab can stage links in session storage before unlock. Decrypted messages and drafts live in memory. Plaintext buffers are zeroed when feasible and key references are dropped on lock. The browser, garbage collector, provider and OS can retain copies beyond application control.
+
+On unlock, IndexedDB v3 atomically replaces the legacy contact rows with an AES-256-GCM contact book. Its key is derived from the vault key with HKDF-SHA256, using the owner fingerprint as salt and `encrypt-this/contacts/v1` as the context. The owner and format are bound as associated data. Each write uses a fresh 12-byte nonce and compares the encrypted record against the version read before committing. Legacy contacts are carried over as unverified because their stored verification flags were unauthenticated. Once upgraded, the app requires an authenticated book to load or change contacts. Earlier authentic browser snapshots can still be replayed by someone able to restore local storage.
 
 ## Threat model and provenance
 
